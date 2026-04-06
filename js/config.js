@@ -7,7 +7,7 @@ window.APP_CONFIG = {
 
   // Google OAuth 2.0 Client ID
   // Obtener en: console.cloud.google.com → APIs y servicios → Credenciales
-  GOOGLE_CLIENT_ID: 'TU_CLIENT_ID_AQUI.apps.googleusercontent.com',
+  GOOGLE_CLIENT_ID: '421016762744-8t73o66pl4gpnfop80tmmj4hareiub4n.apps.googleusercontent.com',
 
   // URL del Web App de Google Apps Script
   // Obtener luego de desplegar Code.gs como Web App
