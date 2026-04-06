@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#4F46E5" />
+  <meta name="description" content="Sistema de control de acceso de personal" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Acceso" />
+
+  <title>Control de Acceso</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/css/style.css" />
+
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- ============================================================
+     EMPLOYEE APP (default view)
+     ============================================================ -->
+<div id="employee-app">
+
+  <!-- ---- LOADING ---- -->
+  <div id="view-loading" class="view">
+    <div class="spinner"></div>
+    <p id="loading-text" class="loading-text">Iniciando...</p>
+  </div>
+
+  <!-- ---- SIGN IN ---- -->
+  <div id="view-signin" class="view hidden">
+    <div class="app-header">
+      <div class="app-logo">🏢</div>
+      <div class="app-title" id="signin-app-title">Control de Acceso</div>
+      <div class="app-subtitle">Inicie sesión con su cuenta Google para registrar su acceso</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔐</div>
+      <h2 class="card-title">Identificación</h2>
+      <p class="card-subtitle">
+        Use su cuenta Google institucional para continuar. El sistema verificará que esté registrado.
+      </p>
+      <div id="google-btn-container"></div>
+      <p style="margin-top:1rem;font-size:.8rem;text-align:center;color:var(--text-muted)">
+        Su email se usa únicamente para identificarlo en el sistema.
+      </p>
+    </div>
+  </div>
+
+  <!-- ---- CONFIRM ---- -->
+  <div id="view-confirm" class="view hidden">
+    <div class="app-header">
+      <div class="app-logo">🏢</div>
+      <div class="app-title" id="confirm-app-title">Control de Acceso</div>
+    </div>
+    <div class="card">
+      <div class="empleado-info">
+        <div class="empleado-nombre" id="confirm-nombre">—</div>
+        <div class="empleado-meta">
+          <span>📋 <span id="confirm-sector">—</span></span>
+          <span>🕐 <span id="confirm-turno">—</span></span>
+        </div>
+        <div style="margin-top:.5rem">
+          <span id="confirm-estado-badge" class="estado-badge badge-fuera">FUERA</span>
+        </div>
+      </div>
+
+      <p style="text-align:center;color:var(--text-muted);font-size:.9rem;margin-bottom:1.25rem">
+        Confirme su movimiento:
+      </p>
+
+      <button id="btn-confirmar" class="btn btn-success btn-lg btn-full">
+        📥 Registrar ENTRADA
+      </button>
+
+      <button id="btn-cancelar" class="btn btn-ghost btn-full" style="margin-top:.75rem">
+        Cancelar / Cerrar sesión
+      </button>
+    </div>
+  </div>
+
+  <!-- ---- SUCCESS ---- -->
+  <div id="view-success" class="view hidden">
+    <div class="card success-card">
+      <div class="card-icon" id="success-icon">✅</div>
+      <h2 class="card-title" id="success-titulo">¡Registrado!</h2>
+      <p style="text-align:center;font-weight:600;margin-bottom:.25rem" id="success-nombre">—</p>
+      <p style="text-align:center;color:var(--text-muted);font-size:.875rem" id="success-sector">—</p>
+
+      <div class="success-hora" id="success-hora">00:00:00</div>
+      <p style="text-align:center;color:var(--text-muted);font-size:.875rem" id="success-fecha">—</p>
+
+      <div id="success-duracion-container" class="hidden" style="display:flex;justify-content:center;margin-top:.5rem">
+        <span class="success-duracion">⏱ Tiempo: <strong id="success-duracion">0h 0m</strong></span>
+      </div>
+
+      <div class="countdown-container">
+        <span>Cerrando en</span>
+        <span class="countdown-num" id="countdown">5</span>
+        <span>segundos...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- GOODBYE ---- -->
+  <div id="view-goodbye" class="view goodbye-view hidden">
+    <div class="card" style="text-align:center">
+      <div style="font-size:3.5rem;margin-bottom:1rem">👋</div>
+      <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:.5rem">¡Hasta pronto!</h2>
+      <p style="opacity:.8;margin-bottom:1.5rem">Su acceso fue registrado correctamente.</p>
+      <p style="font-size:.875rem;opacity:.65;margin-bottom:1.5rem">
+        Puede cerrar esta ventana o volver a abrirla cuando necesite registrar su salida.
+      </p>
+      <button onclick="window.location.reload()" class="btn btn-outline" style="border-color:rgba(255,255,255,.5);color:#fff">
+        Volver al inicio
+      </button>
+    </div>
+  </div>
+
+  <!-- ---- ERROR ---- -->
+  <div id="view-error" class="view hidden">
+    <div class="card">
+      <div class="error-icon">❌</div>
+      <h2 class="card-title error-title" id="error-title">Error</h2>
+      <p class="card-subtitle error-msg" id="error-msg" style="margin-bottom:1.5rem">Ha ocurrido un error.</p>
+      <button id="btn-retry" class="btn btn-primary btn-full" onclick="window.location.reload()">
+        🔄 Reintentar
+      </button>
+      <button class="btn btn-ghost btn-full" style="margin-top:.5rem"
+        onclick="Auth.signOut(); window.location.reload()">
+        Cerrar sesión y reintentar
+      </button>
+    </div>
+  </div>
+
+</div><!-- /#employee-app -->
+
+
+<!-- ============================================================
+     ADMIN APP
+     ============================================================ -->
+<div id="admin-app" class="hidden">
+
+  <!-- Admin Loading -->
+  <div id="admin-loading">
+    <div class="spinner"></div>
+    <p class="loading-text">Cargando panel...</p>
+  </div>
+
+  <!-- Admin Login -->
+  <div id="admin-login" class="hidden">
+    <div class="card" style="max-width:380px;width:100%">
+      <div class="card-icon">🛡️</div>
+      <h2 class="card-title">Panel de Administración</h2>
+      <p class="card-subtitle">Acceso exclusivo para administradores del sistema.</p>
+      <div id="admin-google-btn"></div>
+      <p style="margin-top:1rem;font-size:.8rem;text-align:center;color:var(--text-muted)">
+        Solo emails marcados como administradores en la planilla podrán ingresar.
+      </p>
+    </div>
+  </div>
+
+  <!-- Admin Error -->
+  <div id="admin-error" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1.5rem">
+    <div class="card" style="max-width:400px;width:100%;text-align:center">
+      <div style="font-size:3rem;margin-bottom:1rem">🔒</div>
+      <h2 style="color:var(--danger);margin-bottom:.5rem">Acceso denegado</h2>
+      <p id="admin-error-msg" style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.5rem">Sin permisos.</p>
+      <button onclick="Auth.signOut();window.location.reload()" class="btn btn-primary">
+        Intentar con otra cuenta
+      </button>
+    </div>
+  </div>
+
+  <!-- Admin Dashboard -->
+  <div id="admin-dashboard" class="hidden admin-layout">
+
+    <!-- Sidebar overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="admin-sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">🏢</div>
+        <div class="sidebar-logo-title">Control de Acceso</div>
+        <div class="sidebar-logo-sub">Panel Administrativo</div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item tab-active" data-tab="overview">
+          <span class="nav-item-icon">📊</span> Vista general
+        </button>
+        <button class="nav-item" data-tab="employees">
+          <span class="nav-item-icon">👥</span> Empleados
+        </button>
+        <button class="nav-item" data-tab="records">
+          <span class="nav-item-icon">📋</span> Registros
+        </button>
+        <button class="nav-item" data-tab="reports">
+          <span class="nav-item-icon">📈</span> Informes
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <span class="nav-item-icon">⚙️</span> Configuración
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="sidebar-avatar">
+            <img id="admin-avatar" src="" alt="" onerror="this.style.display='none'" />
+          </div>
+          <div>
+            <div class="sidebar-user-name" id="admin-user-name">—</div>
+            <div class="sidebar-user-email" id="admin-user-email">—</div>
+          </div>
+        </div>
+        <button onclick="Auth.signOut();window.location.reload()" class="btn btn-sm btn-ghost" style="width:100%;color:rgba(255,255,255,.6)">
+          Cerrar sesión
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div style="display:flex;align-items:center;gap:1rem">
+          <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+          <h1 class="admin-topbar-title" id="topbar-title">Vista General</h1>
+        </div>
+        <button onclick="Dashboard._loadTab(Dashboard._activeTab||'overview')" class="btn btn-sm btn-outline">
+          🔄 Actualizar
+        </button>
+      </header>
+
+      <div class="admin-content">
+
+        <!-- ==============================
+             TAB: OVERVIEW
+             ============================== -->
+        <div class="tab-pane" data-tab-pane="overview">
+          <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:1rem" id="ov-fecha">Hoy</p>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value" id="ov-dentro">—</div>
+              <div class="stat-label">Dentro ahora</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="ov-fuera">—</div>
+              <div class="stat-label">Fuera / Ausentes</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="ov-total">—</div>
+              <div class="stat-label">Empleados activos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="ov-hoy">—</div>
+              <div class="stat-label">Registros hoy</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="ov-abiertos">—</div>
+              <div class="stat-label">Ingresos sin salida</div>
+            </div>
+          </div>
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Empleados presentes</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empleado</th>
+                    <th>Sector</th>
+                    <th>Turno</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-presentes-tbody">
+                  <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Últimos registros de hoy</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empleado</th>
+                    <th>Sector</th>
+                    <th>Ingreso</th>
+                    <th>Egreso</th>
+                    <th>Tiempo</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-registros-tbody">
+                  <tr><td colspan="5" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: EMPLOYEES
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="employees">
+
+          <div class="filters-bar" style="margin-bottom:1rem">
+            <input type="text" id="emp-search" class="form-input" placeholder="🔍 Buscar por nombre, email o sector..." style="flex:1;min-width:220px" />
+          </div>
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Lista de empleados</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empleado</th>
+                    <th>Sector</th>
+                    <th>Turno</th>
+                    <th>Estado</th>
+                    <th>Activo</th>
+                    <th>Dispositivo</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="emp-tbody">
+                  <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Agregar empleado -->
+          <div class="add-emp-form">
+            <h3 style="font-weight:700;margin-bottom:1.25rem">➕ Agregar empleado</h3>
+            <form id="form-agregar-empleado" novalidate>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Nombre *</label>
+                  <input type="text" name="nombre" class="form-input" required placeholder="Ana" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Apellido *</label>
+                  <input type="text" name="apellido" class="form-input" required placeholder="García" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Email Google *</label>
+                <input type="email" name="email" class="form-input" required placeholder="ana.garcia@gmail.com" />
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Sector</label>
+                  <input type="text" name="sector" class="form-input" placeholder="RRHH, Ventas..." />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Turno</label>
+                  <input type="text" name="turno" class="form-input" placeholder="Mañana, Tarde..." />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-check">
+                  <input type="checkbox" name="esAdmin" />
+                  Es administrador del sistema
+                </label>
+              </div>
+              <div id="msg-agregar"></div>
+              <button type="submit" class="btn btn-primary btn-full" style="margin-top:.5rem">
+                Agregar empleado
+              </button>
+            </form>
+          </div>
+
+        </div>
+
+        <!-- ==============================
+             TAB: RECORDS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="records">
+
+          <div class="filters-bar">
+            <input type="email" id="reg-f-email" class="form-input" placeholder="Filtrar por email" style="flex:1;min-width:180px" />
+            <input type="text" id="reg-f-sector" class="form-input" placeholder="Sector" style="width:140px" />
+            <input type="date" id="reg-f-desde" class="form-input" title="Desde" />
+            <input type="date" id="reg-f-hasta" class="form-input" title="Hasta" />
+            <button id="btn-export-reg" class="btn btn-outline btn-sm">
+              ⬇️ Exportar CSV
+            </button>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Registros de acceso</span>
+              <span id="reg-count" class="text-small text-muted"></span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Empleado</th>
+                    <th>Ingreso</th>
+                    <th>Egreso</th>
+                    <th>Duración</th>
+                    <th>Día</th>
+                  </tr>
+                </thead>
+                <tbody id="reg-tbody">
+                  <tr><td colspan="6" class="text-center text-muted">Seleccione filtros y haga clic en Actualizar</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: REPORTS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="reports">
+
+          <div class="informe-controls">
+            <div class="form-group" style="margin:0;flex:1;min-width:200px">
+              <label class="form-label">Período</label>
+              <select id="inf-periodo" class="form-select" style="width:100%">
+                <option value="q1">1ra Quincena (1–15)</option>
+                <option value="q2">2da Quincena (16–fin)</option>
+                <option value="mensual">Mensual completo</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;flex:2;min-width:220px">
+              <label class="form-label">Empleado (dejar vacío = todos)</label>
+              <select id="inf-empleado" class="form-select" style="width:100%">
+                <option value="">— Todos los empleados —</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <button id="btn-generar-informe" class="btn btn-primary">
+                📊 Generar informe
+              </button>
+            </div>
+          </div>
+
+          <div id="inf-loader" class="hidden" style="text-align:center;padding:2rem">
+            <div class="spinner"></div>
+            <p class="text-muted">Generando informe...</p>
+          </div>
+
+          <div id="inf-resultado" class="hidden">
+            <div class="table-container">
+              <div class="table-header">
+                <span class="table-title" id="inf-titulo-resultado">Informe</span>
+                <button id="btn-export-inf" class="btn btn-outline btn-sm">⬇️ Exportar CSV</button>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Empleado</th>
+                      <th>Días</th>
+                      <th>Total</th>
+                      <th>Horas</th>
+                      <th>Promedio/día</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="inf-tbody">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ==============================
+             TAB: SETTINGS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="settings">
+
+          <div class="config-form">
+            <h3 style="font-weight:700;margin-bottom:1.25rem">⚙️ Configuración del sistema</h3>
+            <form id="form-config" novalidate>
+
+              <div class="form-group">
+                <label class="form-label">Nombre del establecimiento</label>
+                <input type="text" id="cfg-nombre-empresa" class="form-input" placeholder="Mi Empresa" />
+              </div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:1.5rem 0" />
+
+              <h4 style="font-weight:600;margin-bottom:1rem">📍 Geofencing (control de ubicación)</h4>
+
+              <div style="margin-bottom:1rem">
+                <button type="button" id="btn-get-gps" class="btn btn-outline btn-sm">
+                  📍 Usar mi ubicación actual como centro del geofence
+                </button>
+                <p style="font-size:.8rem;color:var(--text-muted);margin-top:.4rem">
+                  Haga clic desde el establecimiento para capturar las coordenadas exactas.
+                </p>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Latitud</label>
+                  <input type="number" id="cfg-lat" class="form-input" placeholder="-34.603722" step="any" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Longitud</label>
+                  <input type="number" id="cfg-lng" class="form-input" placeholder="-58.381592" step="any" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Radio permitido (metros)</label>
+                <input type="number" id="cfg-radio" class="form-input" placeholder="200" min="50" max="2000" />
+                <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">
+                  Recomendado: 100–300m según el tamaño del establecimiento.
+                  Dejar la latitud/longitud vacías desactiva el geofencing.
+                </p>
+              </div>
+
+              <div id="cfg-msg"></div>
+
+              <button type="submit" class="btn btn-primary btn-full" style="margin-top:.75rem">
+                💾 Guardar configuración
+              </button>
+            </form>
+          </div>
+
+        </div>
+        <!-- /tabs -->
+
+      </div><!-- /.admin-content -->
+    </main>
+
+  </div><!-- /#admin-dashboard -->
+
+</div><!-- /#admin-app -->
+
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script src="/js/config.js"></script>
+<script src="/js/fingerprint.js"></script>
+<script src="/js/geo.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/dashboard.js"></script>
+
+<script>
+  // ---- Registro del Service Worker ----
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW:', e));
+    });
+  }
+
+  // ---- Sidebar toggle (mobile) ----
+  function toggleSidebar() {
+    const sb  = document.getElementById('admin-sidebar');
+    const ov  = document.getElementById('sidebar-overlay');
+    const open = sb.classList.toggle('open');
+    if (ov) ov.classList.toggle('open', open);
+  }
+
+  // ---- Actualizar título del topbar cuando cambia de tab ----
+  const tabTitles = {
+    overview:  'Vista General',
+    employees: 'Empleados',
+    records:   'Registros',
+    reports:   'Informes',
+    settings:  'Configuración'
+  };
+
+  document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = document.getElementById('topbar-title');
+      if (t) t.textContent = tabTitles[btn.dataset.tab] || '';
+      // Cerrar sidebar en mobile
+      if (window.innerWidth <= 768) toggleSidebar();
+    });
+  });
+
+  // ---- Setup tab empleados (form) cuando se activa ----
+  document.querySelectorAll('[data-tab="employees"]').forEach(btn => {
+    btn.addEventListener('click', () => Dashboard._setupEmployeeTab());
+  });
+
+  // ---- Determinar si mostrar la app del empleado o el admin ----
+  // Acceso al panel admin: agregar #admin al URL o navegar a /#admin
+  (function determineView() {
+    const isAdmin = window.location.hash === '#admin' ||
+                    new URLSearchParams(window.location.search).get('admin') === '1';
+    if (isAdmin) {
+      Dashboard.init();
+    } else {
+      App.init();
+    }
+  })();
+</script>
+
+</body>
+</html>
