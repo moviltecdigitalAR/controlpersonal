@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Generador de íconos PWA</title>
+  <style>
+    body { font-family: sans-serif; background: #f3f4f6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 1.5rem; padding: 2rem; }
+    canvas { border-radius: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    button { background: #4F46E5; color: #fff; border: none; padding: .75rem 2rem; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    button:hover { background: #3730A3; }
+    .row { display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; justify-content: center; }
+    h1 { font-size: 1.25rem; color: #111; margin: 0; }
+    p  { color: #6B7280; font-size: .9rem; margin: 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Generador de íconos PWA — Control de Acceso</h1>
+  <p>Haga clic en cada botón para descargar el ícono correspondiente.<br>
+     Luego mueva los archivos a la carpeta <code>icons/</code> del proyecto.</p>
+
+  <div class="row">
+    <div style="text-align:center">
+      <canvas id="c192" width="192" height="192"></canvas><br>
+      <button onclick="download('c192','icon-192.png')" style="margin-top:.75rem">⬇ Descargar icon-192.png</button>
+    </div>
+    <div style="text-align:center">
+      <canvas id="c512" width="512" height="512"></canvas><br>
+      <button onclick="download('c512','icon-512.png')" style="margin-top:.75rem">⬇ Descargar icon-512.png</button>
+    </div>
+  </div>
+
+  <script>
+    function drawIcon(canvas) {
+      const s   = canvas.width;
+      const ctx = canvas.getContext('2d');
+      const r   = s * 0.18;   // border-radius
+
+      // Fondo con esquinas redondeadas
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(s - r, 0);
+      ctx.quadraticCurveTo(s, 0, s, r);
+      ctx.lineTo(s, s - r);
+      ctx.quadraticCurveTo(s, s, s - r, s);
+      ctx.lineTo(r, s);
+      ctx.quadraticCurveTo(0, s, 0, s - r);
+      ctx.lineTo(0, r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath();
+
+      // Gradiente de fondo
+      const grad = ctx.createLinearGradient(0, 0, s, s);
+      grad.addColorStop(0, '#4F46E5');
+      grad.addColorStop(1, '#7C3AED');
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Ícono de edificio (🏢) en blanco
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.arc(s / 2, s / 2, s * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Texto principal
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign  = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Letra principal "CA"
+      ctx.font = `bold ${s * 0.30}px -apple-system, BlinkMacSystemFont, Arial, sans-serif`;
+      ctx.fillText('CA', s / 2, s * 0.44);
+
+      // Subtexto
+      ctx.font = `${s * 0.115}px -apple-system, BlinkMacSystemFont, Arial, sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.80)';
+      ctx.fillText('ACCESO', s / 2, s * 0.68);
+
+      // Línea decorativa
+      const lw = s * 0.28;
+      const ly = s * 0.78;
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth   = s * 0.018;
+      ctx.beginPath();
+      ctx.moveTo(s / 2 - lw / 2, ly);
+      ctx.lineTo(s / 2 + lw / 2, ly);
+      ctx.stroke();
+    }
+
+    function download(canvasId, filename) {
+      const canvas = document.getElementById(canvasId);
+      const a = document.createElement('a');
+      a.href     = canvas.toDataURL('image/png');
+      a.download = filename;
+      a.click();
+    }
+
+    drawIcon(document.getElementById('c192'));
+    drawIcon(document.getElementById('c512'));
+  </script>
+</body>
+</html>
