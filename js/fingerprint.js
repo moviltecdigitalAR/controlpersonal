@@ -34,9 +34,18 @@ const Fingerprint = (() => {
   }
 
   // Audio fingerprint: diferencias en el pipeline de audio
+  // Nota: en móviles AudioContext requiere user gesture, por eso se atrapa
+  // silenciosamente cualquier error para no romper el flujo de login automático.
   async function audioHash() {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return 'no-audio';
+      const ctx = new AC({ sampleRate: 44100 });
+      if (ctx.state === 'suspended') {
+        // En móviles puede estar suspendido sin gesture; no forzamos resume
+        await ctx.close();
+        return 'audio-suspended';
+      }
       const osc = ctx.createOscillator();
       const analyser = ctx.createAnalyser();
       const gain = ctx.createGain();
@@ -47,6 +56,8 @@ const Fingerprint = (() => {
       gain.connect(ctx.destination);
 
       osc.start(0);
+      // Pequeña espera para que el analizador tenga datos
+      await new Promise(r => setTimeout(r, 50));
       const buf = new Float32Array(analyser.frequencyBinCount);
       analyser.getFloatFrequencyData(buf);
       osc.stop();

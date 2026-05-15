@@ -119,7 +119,7 @@ Tiempo estimado: **30–45 minutos**.
 ## PASO 4 — Configurar la App
 
 1. Abrir el archivo **`js/config.js`** de este proyecto
-2. Reemplazar los valores:
+2. Reemplazar los valores de ejemplo por los reales:
 
 ```javascript
 window.APP_CONFIG = {
@@ -129,6 +129,24 @@ window.APP_CONFIG = {
   AUTO_CLOSE_DELAY: 5000,                                               // 5 segundos
 };
 ```
+
+> ⚠️ **Importante:** El archivo `js/config.js` ahora tiene validación. Si abre la consola del navegador (F12) y ve el error `[CONFIG] ERROR`, significa que todavía tiene los valores de ejemplo.
+
+---
+
+## PASO 4.5 — Probar localmente (opcional pero recomendado)
+
+Antes de subir a Netlify, puede probar la app en su computadora:
+
+```bash
+python start.py
+```
+
+Luego abra en el navegador:
+- **Vista empleado:** http://localhost:8080
+- **Vista admin:** http://localhost:8080/#admin
+
+> Recuerde que el login de Google solo funcionará si agregó `http://localhost:8080` como origen autorizado en Google Cloud Console (Paso 3.3).
 
 ---
 

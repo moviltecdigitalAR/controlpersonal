@@ -148,6 +148,7 @@ const App = (() => {
       );
 
       if (!result.success) {
+        if (btnConf) btnConf.disabled = false;
         showError(result.error, 'Error al registrar');
         return;
       }
@@ -155,6 +156,7 @@ const App = (() => {
       _showSuccess(result);
 
     } catch (err) {
+      if (btnConf) btnConf.disabled = false;
       showError('No se pudo conectar con el servidor. ' + err.message);
     }
   }

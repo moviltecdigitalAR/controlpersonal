@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // CONTROL DE ACCESO PERSONAL - Google Apps Script Backend
 // ============================================================
 // INSTALACIÓN:
@@ -223,6 +223,7 @@ function registrarMovimiento(data) {
     // Calcular duración
     const ingresoDate  = parseFechaHora(ingresoFecha, ingresoHora);
     const duracionMin  = Math.max(0, Math.round((now - ingresoDate) / 60000));
+    if (isNaN(duracionMin)) duracionMin = 0;
     const duracionFormato = formatDuracion(duracionMin);
 
     registrosSheet.getRange(lastRow, 9).setValue(hora);
@@ -449,12 +450,37 @@ function formatDuracion(min) {
 }
 
 function parseFechaHora(fecha, hora) {
-  const [d, M, y] = String(fecha).split('/');
-  const [h, m, s] = String(hora).split(':');
-  return new Date(parseInt(y), parseInt(M) - 1, parseInt(d), parseInt(h), parseInt(m), parseInt(s || 0));
+  let y, M, d;
+  if (fecha instanceof Date) {
+    y = fecha.getFullYear();
+    M = fecha.getMonth();
+    d = fecha.getDate();
+  } else {
+    const parts = String(fecha).split('/');
+    y = parseInt(parts[2]);
+    M = parseInt(parts[1]) - 1;
+    d = parseInt(parts[0]);
+  }
+
+  let h = 0, m = 0, s = 0;
+  if (hora instanceof Date) {
+    h = hora.getHours();
+    m = hora.getMinutes();
+    s = hora.getSeconds();
+  } else {
+    const parts = String(hora).split(':');
+    h = parseInt(parts[0]);
+    m = parseInt(parts[1]);
+    s = parseInt(parts[2] || 0);
+  }
+
+  return new Date(y, M, d, h, m, s);
 }
 
 function parseFechaSimple(fechaStr) {
+  if (fechaStr instanceof Date) {
+    return new Date(fechaStr.getFullYear(), fechaStr.getMonth(), fechaStr.getDate());
+  }
   const p = String(fechaStr).split('/');
   if (p.length === 3) return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
   return new Date(fechaStr);

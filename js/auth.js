@@ -15,9 +15,10 @@ const Auth = (() => {
           google.accounts.id.initialize({
             client_id:             window.APP_CONFIG.GOOGLE_CLIENT_ID,
             callback:              _handleCredential,
-            auto_select:           true,
+            auto_select:           false,
             cancel_on_tap_outside: false,
-            use_fedcm_for_prompt:  false
+            // FedCM es requerido en navegadores modernos (Chrome 117+)
+            use_fedcm_for_prompt:  true
           });
           resolve();
         })

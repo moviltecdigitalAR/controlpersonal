@@ -266,7 +266,7 @@ const Dashboard = (() => {
     if (!tbody) return;
 
     tbody.innerHTML = _registros.length === 0
-      ? '<tr><td colspan="8" class="text-center text-muted">Sin registros para los filtros seleccionados</td></tr>'
+      ? '<tr><td colspan="6" class="text-center text-muted">Sin registros para los filtros seleccionados</td></tr>'
       : _registros.map(r => `
           <tr>
             <td>${r.fecha}</td>
