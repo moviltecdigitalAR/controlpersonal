@@ -188,9 +188,13 @@ function registrarMovimiento(data) {
       empleado.email, empleado.nombre, empleado.apellido,
       empleado.sector, empleado.turno,
       fecha, hora,
-      '', '',   // egreso y duración vacíos
+      '', '',   // egreso y duración: la fórmula se setea abajo
       diaSemana
     ]);
+    // Poner fórmula en col J: calcula duración h:mm:ss en cuanto se llene col I (egreso)
+    const filaIngreso = registrosSheet.getLastRow();
+    registrosSheet.getRange(filaIngreso, 10)
+      .setFormula('=IF(ISBLANK(I' + filaIngreso + '),"",TEXT(TIMEVALUE(I' + filaIngreso + ')-TIMEVALUE(H' + filaIngreso + '),"[h]:mm:ss"))');
     empleadosSheet.getRange(emp.rowIndex, 9).setValue('Dentro');
 
     return {
@@ -223,24 +227,19 @@ function registrarMovimiento(data) {
       return { success: false, error: 'No se encontró un ingreso abierto. Estado reseteado a Fuera.' };
     }
 
-    // Calcular duración
-    const ingresoDate  = parseFechaHora(ingresoFecha, ingresoHora);
-    const duracionMin  = Math.max(0, Math.round((now - ingresoDate) / 60000));
-    if (isNaN(duracionMin)) duracionMin = 0;
-    const duracionFormato = formatDuracion(duracionMin);
+    // Calcular duración para mostrar en la app (no se escribe en sheet, la fórmula lo hace)
+    const ingresoDate    = parseFechaHora(ingresoFecha, ingresoHora);
+    const duracionSec    = Math.max(0, Math.round((now - ingresoDate) / 1000));
+    const duracionFormato = formatDuracionSec(duracionSec);
 
+    // Solo escribir la hora de egreso — la fórmula en col J calcula la duración sola
     registrosSheet.getRange(lastRow, 9).setValue(hora);
-    // Guardar duración como TEXTO PLANO para que Sheets nunca lo convierta a fecha serial.
-    // setNumberFormat('@') = texto; se llama ANTES de setValue para que el formato gane.
-    const rangeMin = registrosSheet.getRange(lastRow, 10);
-    rangeMin.setNumberFormat('@');
-    rangeMin.setValue(String(duracionMin));
     empleadosSheet.getRange(emp.rowIndex, 9).setValue('Fuera');
 
     return {
       success: true, tipo: 'egreso',
       hora, fecha, diaSemana,
-      duracionMin, duracionFormato,
+      duracionSec, duracionFormato,
       empleado: { nombre: empleado.nombre, apellido: empleado.apellido, sector: empleado.sector, turno: empleado.turno }
     };
   }
@@ -348,7 +347,7 @@ function obtenerReporte(data) {
       fecha:       rows[i][6],
       horaIngreso: rows[i][7],
       horaEgreso:  rows[i][8],
-      duracionMin: Number(rows[i][9]) || 0,
+      duracionMin: parseDuracionTexto(rows[i][9]),
       diaSemana:   rows[i][10]
     });
   }
@@ -454,6 +453,29 @@ function formatDuracion(min) {
   const h = Math.floor(min / 60);
   const m = min % 60;
   return h + 'h ' + m + 'm';
+}
+
+// Formato con segundos para mostrar en la app móvil al registrar salida
+function formatDuracionSec(secs) {
+  if (!secs || secs < 0) return '0h 0m 0s';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return h + 'h ' + m + 'm ' + s + 's';
+}
+
+// Lee la duración de la hoja: la fórmula genera "h:mm:ss" (ej "1:25:42"),
+// pero también acepta números enteros (registros viejos en minutos)
+function parseDuracionTexto(val) {
+  if (!val || val === '') return 0;
+  const str = String(val).trim();
+  // Formato de fórmula: "1:25:42" o "0:02:00"
+  const partes = str.split(':');
+  if (partes.length === 3) {
+    return parseInt(partes[0] || 0) * 60 + parseInt(partes[1] || 0);
+  }
+  // Compatibilidad con registros viejos (número de minutos guardado como texto)
+  return Number(str) || 0;
 }
 
 function parseFechaHora(fecha, hora) {
