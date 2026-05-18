@@ -11,6 +11,31 @@ const App = (() => {
     empleado:    null
   };
 
+  // Temporizador de inactividad: si la app queda abierta sin acción,
+  // vuelve sola a la pantalla de inicio después de INACTIVITY_MS ms.
+  const INACTIVITY_MS = 5 * 60 * 1000; // 5 minutos
+  let _inactivityTimer = null;
+
+  function _resetInactivity() {
+    clearTimeout(_inactivityTimer);
+    _inactivityTimer = setTimeout(() => {
+      // Solo actuar si estamos en una pantalla "de espera" (no cargando o procesando)
+      const activa = document.querySelector('.view:not(.hidden)');
+      if (activa && ['view-confirm', 'view-signin', 'view-error'].includes(activa.id)) {
+        Auth.signOut();
+        window.location.reload();
+      }
+    }, INACTIVITY_MS);
+  }
+
+  // Arrancar el detector de inactividad ante cualquier toque o clic
+  function _initInactivity() {
+    ['click', 'touchstart', 'keydown'].forEach(ev =>
+      document.addEventListener(ev, _resetInactivity, { passive: true })
+    );
+    _resetInactivity();
+  }
+
   // ---- Gestión de vistas ----
 
   function showView(id) {
@@ -18,6 +43,7 @@ const App = (() => {
     const el = document.getElementById(id);
     if (el) el.classList.remove('hidden');
     window.scrollTo(0, 0);
+    _resetInactivity();
   }
 
   function setLoading(text = 'Procesando...') {
@@ -39,6 +65,7 @@ const App = (() => {
   // ---- Flujo principal ----
 
   async function init() {
+    _initInactivity();
     setLoading('Iniciando aplicación...');
 
     try {
@@ -52,7 +79,6 @@ const App = (() => {
         showView('view-signin');
         Auth.renderButton('google-btn-container');
 
-        // One Tap automático
         window.__onAuthSuccess = async (u) => {
           _state.user = u;
           await proceed();
@@ -74,8 +100,6 @@ const App = (() => {
       try {
         _state.location = await Geo.getCurrentPosition();
       } catch (geoErr) {
-        // Si falla el GPS y el servidor tiene geofencing activo,
-        // el GAS lo rechazará. Si no tiene geofencing, continúa.
         _state.location = null;
         console.warn('GPS no disponible:', geoErr.message);
       }
@@ -107,12 +131,12 @@ const App = (() => {
   }
 
   function _showConfirmation() {
-    const emp       = _state.empleado;
-    const isDentro  = emp.estado === 'Dentro';
+    const emp      = _state.empleado;
+    const isDentro = emp.estado === 'Dentro';
 
-    setText('confirm-nombre',  `${emp.nombre} ${emp.apellido}`);
-    setText('confirm-sector',  emp.sector || '—');
-    setText('confirm-turno',   emp.turno  || '—');
+    setText('confirm-nombre',       `${emp.nombre} ${emp.apellido}`);
+    setText('confirm-sector',       emp.sector || '—');
+    setText('confirm-turno',        emp.turno  || '—');
     setText('confirm-estado-badge', isDentro ? 'DENTRO' : 'FUERA');
 
     const estadoBadge = document.getElementById('confirm-estado-badge');
@@ -124,6 +148,7 @@ const App = (() => {
     if (btnTipo) {
       btnTipo.textContent = isDentro ? '📤 Registrar SALIDA' : '📥 Registrar ENTRADA';
       btnTipo.className   = 'btn ' + (isDentro ? 'btn-danger' : 'btn-success') + ' btn-lg btn-full';
+      btnTipo.disabled    = false;
       btnTipo.onclick     = registrar;
     }
 
@@ -182,21 +207,24 @@ const App = (() => {
     }
 
     showView('view-success');
-    _startCountdown();
+
+    // Ingreso: 5s para ver el mensaje. Salida: 10s para leer la duración.
+    const delay = isIngreso ? 5 : 10;
+    _startCountdown(delay);
   }
 
-  function _startCountdown() {
-    let secs = Math.round(window.APP_CONFIG.AUTO_CLOSE_DELAY / 1000);
-    setText('countdown', secs);
+  function _startCountdown(secs) {
+    let remaining = secs;
+    setText('countdown', remaining);
 
     const iv = setInterval(() => {
-      secs--;
-      setText('countdown', secs);
-      if (secs <= 0) {
+      remaining--;
+      setText('countdown', remaining);
+      if (remaining <= 0) {
         clearInterval(iv);
-        showView('view-goodbye');
-        // Intentar cerrar la pestaña (funciona si fue abierta por JS)
-        setTimeout(() => { try { window.close(); } catch (_) {} }, 600);
+        // Volver a la pantalla de inicio (vista signin) listos para el próximo empleado
+        Auth.signOut();
+        window.location.reload();
       }
     }, 1000);
   }

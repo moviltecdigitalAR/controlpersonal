@@ -101,24 +101,21 @@
       </div>
 
       <div class="countdown-container">
-        <span>Cerrando en</span>
+        <span>Volviendo al inicio en</span>
         <span class="countdown-num" id="countdown">5</span>
         <span>segundos...</span>
       </div>
     </div>
   </div>
 
-  <!-- ---- GOODBYE ---- -->
+  <!-- ---- GOODBYE (se llega aquí solo si window.close() no funcionó) ---- -->
   <div id="view-goodbye" class="view goodbye-view hidden">
     <div class="card" style="text-align:center">
-      <div style="font-size:3.5rem;margin-bottom:1rem">👋</div>
-      <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:.5rem">¡Hasta pronto!</h2>
-      <p style="opacity:.8;margin-bottom:1.5rem">Su acceso fue registrado correctamente.</p>
-      <p style="font-size:.875rem;opacity:.65;margin-bottom:1.5rem">
-        Puede cerrar esta ventana o volver a abrirla cuando necesite registrar su salida.
-      </p>
-      <button onclick="window.location.reload()" class="btn btn-outline" style="border-color:rgba(255,255,255,.5);color:#fff">
-        Volver al inicio
+      <div style="font-size:3.5rem;margin-bottom:1rem">✅</div>
+      <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:.5rem">¡Acceso registrado!</h2>
+      <p style="opacity:.8;margin-bottom:1.5rem">Su movimiento fue registrado correctamente.</p>
+      <button onclick="Auth.signOut(); window.location.reload()" class="btn btn-outline" style="border-color:rgba(255,255,255,.5);color:#fff">
+        Nuevo registro
       </button>
     </div>
   </div>

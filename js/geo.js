@@ -4,7 +4,6 @@
 
 const Geo = (() => {
 
-  // Distancia en metros entre dos puntos GPS (fórmula Haversine)
   function haversine(lat1, lon1, lat2, lon2) {
     const R    = 6371000;
     const toRad = x => x * Math.PI / 180;
@@ -16,40 +15,67 @@ const Geo = (() => {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
-  // Obtener posición GPS actual como Promise
-  function getCurrentPosition(options = {}) {
+  // Obtener posición GPS con estrategia de 2 intentos:
+  // 1º intento: baja precisión + caché de 2 min → responde en ~1s
+  // 2º intento: alta precisión + sin caché → si el 1º falló o devolvió mala precisión
+  function getCurrentPosition() {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error('Geolocalización no disponible en este dispositivo.'));
         return;
       }
 
-      const defaultOpts = {
-        timeout:            15000,
-        maximumAge:         30000,
-        enableHighAccuracy: true
+      const mensajes = {
+        1: 'Permiso de ubicación denegado. Active la ubicación para continuar.',
+        2: 'No se pudo obtener la ubicación. Verifique que el GPS esté activo.',
+        3: 'Tiempo de espera agotado al obtener la ubicación.'
       };
 
+      // --- Intento rápido: usa posición en caché o antena de red (< 2s) ---
       navigator.geolocation.getCurrentPosition(
-        pos => resolve({
-          lat:      pos.coords.latitude,
-          lng:      pos.coords.longitude,
-          accuracy: pos.coords.accuracy
-        }),
-        err => {
-          const msgs = {
-            1: 'Permiso de ubicación denegado. Active la ubicación para continuar.',
-            2: 'No se pudo obtener la ubicación. Verifique que el GPS esté activo.',
-            3: 'Tiempo de espera agotado al obtener la ubicación.'
+        pos => {
+          const result = {
+            lat:      pos.coords.latitude,
+            lng:      pos.coords.longitude,
+            accuracy: pos.coords.accuracy
           };
-          reject(new Error(msgs[err.code] || 'Error de geolocalización desconocido.'));
+          // Si la precisión es aceptable (≤ 500m) la usamos de inmediato
+          // y en paralelo lanzamos la de alta precisión para mejorarla si es posible
+          if (pos.coords.accuracy <= 500) {
+            resolve(result);
+          } else {
+            // Precisión muy baja (solo antena), intentar mejorar con GPS real
+            _intentarAltaPrecision(resolve, reject, result, mensajes);
+          }
         },
-        { ...defaultOpts, ...options }
+        () => {
+          // El intento rápido falló → ir directo a alta precisión
+          _intentarAltaPrecision(resolve, reject, null, mensajes);
+        },
+        { enableHighAccuracy: false, timeout: 4000, maximumAge: 120000 }
       );
     });
   }
 
-  // Verificar si una posición está dentro del radio permitido
+  function _intentarAltaPrecision(resolve, reject, fallback, mensajes) {
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({
+        lat:      pos.coords.latitude,
+        lng:      pos.coords.longitude,
+        accuracy: pos.coords.accuracy
+      }),
+      err => {
+        // Si tenemos un resultado de baja precisión lo usamos antes de rechazar
+        if (fallback) {
+          resolve(fallback);
+        } else {
+          reject(new Error(mensajes[err.code] || 'Error de geolocalización desconocido.'));
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
   function checkGeofence(lat, lng, centerLat, centerLng, radiusMeters) {
     const distance = haversine(lat, lng, centerLat, centerLng);
     return {
