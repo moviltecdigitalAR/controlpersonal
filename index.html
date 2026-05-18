@@ -23,119 +23,135 @@
 <body>
 
 <!-- ============================================================
-     EMPLOYEE APP (default view)
+     EMPLOYEE APP (default view) — Premium Design
      ============================================================ -->
 <div id="employee-app">
 
   <!-- ---- LOADING ---- -->
   <div id="view-loading" class="view">
-    <div class="spinner"></div>
-    <p id="loading-text" class="loading-text">Iniciando...</p>
+    <div class="emp-brand">
+      <div class="emp-brand-icon">🏢</div>
+      <div class="emp-brand-name" id="loading-app-name">Control de Acceso</div>
+    </div>
+    <div class="glass-card" style="text-align:center;max-width:320px">
+      <div class="loading-ring"></div>
+      <p id="loading-text" class="loading-text">Iniciando...</p>
+      <div class="loading-step" id="loading-step" style="display:none">
+        <span id="loading-step-txt"></span>
+      </div>
+    </div>
   </div>
 
   <!-- ---- SIGN IN ---- -->
   <div id="view-signin" class="view hidden">
-    <div class="app-header">
-      <div class="app-logo">🏢</div>
-      <div class="app-title" id="signin-app-title">Control de Acceso</div>
-      <div class="app-subtitle">Inicie sesión con su cuenta Google para registrar su acceso</div>
+    <div class="emp-brand">
+      <div class="emp-brand-icon">🏢</div>
+      <div class="emp-brand-name" id="signin-app-title">Control de Acceso</div>
+      <div class="emp-brand-sub">Sistema de registro de acceso</div>
     </div>
-    <div class="card">
-      <div class="card-icon">🔐</div>
-      <h2 class="card-title">Identificación</h2>
-      <p class="card-subtitle">
-        Use su cuenta Google institucional para continuar. El sistema verificará que esté registrado.
-      </p>
+    <div class="glass-card">
+      <h2 class="signin-title">¡Bienvenido!</h2>
+      <p class="signin-sub">Inicie sesión con su cuenta Google para registrar su entrada o salida.</p>
+      <div class="signin-divider">Autenticación segura</div>
       <div id="google-btn-container"></div>
-      <p style="margin-top:1rem;font-size:.8rem;text-align:center;color:var(--text-muted)">
-        Su email se usa únicamente para identificarlo en el sistema.
-      </p>
+      <p class="signin-note">Su email se usa únicamente para identificarlo en el sistema. Nunca compartimos sus datos.</p>
     </div>
   </div>
 
   <!-- ---- CONFIRM ---- -->
   <div id="view-confirm" class="view hidden">
-    <div class="app-header">
-      <div class="app-logo">🏢</div>
-      <div class="app-title" id="confirm-app-title">Control de Acceso</div>
-    </div>
-    <div class="card">
-      <div class="empleado-info">
-        <div class="empleado-nombre" id="confirm-nombre">—</div>
-        <div class="empleado-meta">
-          <span>📋 <span id="confirm-sector">—</span></span>
-          <span>🕐 <span id="confirm-turno">—</span></span>
-        </div>
-        <div style="margin-top:.5rem">
-          <span id="confirm-estado-badge" class="estado-badge badge-fuera">FUERA</span>
-        </div>
+    <div class="glass-card" style="text-align:center">
+      <div class="confirm-avatar" id="confirm-avatar">—</div>
+      <div class="confirm-name" id="confirm-nombre">—</div>
+      <div class="confirm-meta">
+        <span class="confirm-meta-pill" id="confirm-sector-pill">—</span>
+        <span class="confirm-meta-pill" id="confirm-turno-pill" style="display:none">—</span>
+      </div>
+      <div style="display:flex;justify-content:center;margin-bottom:1.5rem">
+        <span id="confirm-estado-badge" class="estado-badge badge-fuera">FUERA</span>
       </div>
 
-      <p style="text-align:center;color:var(--text-muted);font-size:.9rem;margin-bottom:1.25rem">
-        Confirme su movimiento:
-      </p>
+      <div class="confirm-live-time" id="confirm-live-time">--:--:--</div>
 
-      <button id="btn-confirmar" class="btn btn-success btn-lg btn-full">
-        📥 Registrar ENTRADA
-      </button>
-
-      <button id="btn-cancelar" class="btn btn-ghost btn-full" style="margin-top:.75rem">
-        Cancelar / Cerrar sesión
-      </button>
+      <div class="confirm-actions">
+        <button id="btn-confirmar" class="btn btn-success btn-lg btn-full">
+          📥 Registrar ENTRADA
+        </button>
+        <button id="btn-cancelar" class="btn btn-ghost btn-full">
+          Cancelar / Cambiar cuenta
+        </button>
+      </div>
     </div>
   </div>
 
   <!-- ---- SUCCESS ---- -->
   <div id="view-success" class="view hidden">
-    <div class="card success-card">
-      <div class="card-icon" id="success-icon">✅</div>
-      <h2 class="card-title" id="success-titulo">¡Registrado!</h2>
-      <p style="text-align:center;font-weight:600;margin-bottom:.25rem" id="success-nombre">—</p>
-      <p style="text-align:center;color:var(--text-muted);font-size:.875rem" id="success-sector">—</p>
+    <div class="glass-card" style="text-align:center">
 
-      <div class="success-hora" id="success-hora">00:00:00</div>
-      <p style="text-align:center;color:var(--text-muted);font-size:.875rem" id="success-fecha">—</p>
-
-      <div id="success-duracion-container" class="hidden" style="display:flex;justify-content:center;margin-top:.5rem">
-        <span class="success-duracion">⏱ Tiempo: <strong id="success-duracion">0h 0m</strong></span>
+      <div class="success-icon-wrap success-icon-ingreso" id="success-icon-wrap">
+        <span id="success-icon">✅</span>
       </div>
 
-      <div class="countdown-container">
-        <span>Cerrando en</span>
-        <span class="countdown-num" id="countdown">5</span>
-        <span>segundos...</span>
+      <h2 class="success-titulo" id="success-titulo">¡Registrado!</h2>
+      <p class="success-nombre" id="success-nombre">—</p>
+
+      <div style="display:flex;justify-content:center;margin-bottom:1rem">
+        <span class="success-sector-tag" id="success-sector">—</span>
       </div>
+
+      <div class="success-time-display">
+        <div class="success-hora" id="success-hora">00:00:00</div>
+        <div class="success-fecha-dia" id="success-fecha">—</div>
+      </div>
+
+      <div id="success-duracion-container" class="hidden" style="display:flex;justify-content:center;margin-bottom:.25rem">
+        <div class="success-duracion-pill">
+          <span>⏱</span>
+          <span>Tiempo en empresa:</span>
+          <strong id="success-duracion">0h 0m</strong>
+        </div>
+      </div>
+
+      <div class="countdown-bar-wrap">
+        <div class="countdown-label">
+          Volviendo al inicio en
+          <span class="countdown-num-badge" id="countdown">5</span>
+          seg
+        </div>
+        <div class="countdown-track">
+          <div class="countdown-fill" id="countdown-fill" style="width:100%"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
   <!-- ---- GOODBYE ---- -->
   <div id="view-goodbye" class="view goodbye-view hidden">
-    <div class="card" style="text-align:center">
-      <div style="font-size:3.5rem;margin-bottom:1rem">👋</div>
-      <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:.5rem">¡Hasta pronto!</h2>
-      <p style="opacity:.8;margin-bottom:1.5rem">Su acceso fue registrado correctamente.</p>
-      <p style="font-size:.875rem;opacity:.65;margin-bottom:1.5rem">
-        Puede cerrar esta ventana o volver a abrirla cuando necesite registrar su salida.
-      </p>
-      <button onclick="window.location.reload()" class="btn btn-outline" style="border-color:rgba(255,255,255,.5);color:#fff">
-        Volver al inicio
+    <div class="glass-card" style="text-align:center">
+      <div style="font-size:3rem;margin-bottom:1rem">✅</div>
+      <h2 style="font-size:1.4rem;font-weight:800;color:#fff;margin-bottom:.5rem">¡Acceso registrado!</h2>
+      <p style="color:rgba(255,255,255,.55);margin-bottom:1.5rem;font-size:.9rem">Su movimiento fue registrado correctamente.</p>
+      <button onclick="Auth.signOut(); window.location.reload()" class="btn btn-ghost btn-full">
+        Nuevo registro
       </button>
     </div>
   </div>
 
   <!-- ---- ERROR ---- -->
   <div id="view-error" class="view hidden">
-    <div class="card">
-      <div class="error-icon">❌</div>
-      <h2 class="card-title error-title" id="error-title">Error</h2>
-      <p class="card-subtitle error-msg" id="error-msg" style="margin-bottom:1.5rem">Ha ocurrido un error.</p>
-      <button id="btn-retry" class="btn btn-primary btn-full" onclick="window.location.reload()">
-        🔄 Reintentar
-      </button>
-      <button class="btn btn-ghost btn-full" style="margin-top:.5rem"
-        onclick="Auth.signOut(); window.location.reload()">
-        Cerrar sesión y reintentar
-      </button>
+    <div class="glass-card">
+      <div class="error-icon">⚠️</div>
+      <h2 class="error-title" id="error-title">Error</h2>
+      <p class="error-msg" id="error-msg">Ha ocurrido un error.</p>
+      <div style="display:flex;flex-direction:column;gap:.75rem">
+        <button id="btn-retry" class="btn btn-primary btn-full btn-lg" onclick="window.location.reload()">
+          🔄 Reintentar
+        </button>
+        <button class="btn btn-ghost btn-full" onclick="Auth.signOut(); window.location.reload()">
+          Cerrar sesión y reintentar
+        </button>
+      </div>
     </div>
   </div>
 

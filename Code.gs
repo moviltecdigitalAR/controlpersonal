@@ -116,9 +116,12 @@ function verificarEmpleado(data) {
   if (fingerprintId) {
     const devStored = String(empleado.dispositivoId || '').trim();
     const devSent   = String(fingerprintId).trim();
+    // Solo considerar válido si tiene el formato real de fingerprint (fp_xxxxx)
+    // Cualquier otro valor (vacío, "FALSE", espacio, etc.) se trata como no registrado
+    const devStoredValid = devStored.startsWith('fp_');
 
-    if (!devStored) {
-      // Primera vez: vincular dispositivo automáticamente
+    if (!devStoredValid) {
+      // Primera vez o valor inválido: vincular dispositivo automáticamente
       getEmpleadosSheet().getRange(emp.rowIndex, 6).setValue(devSent);
       empleado.dispositivoId = devSent;
       empleado.primerDispositivo = true;
@@ -227,7 +230,10 @@ function registrarMovimiento(data) {
     const duracionFormato = formatDuracion(duracionMin);
 
     registrosSheet.getRange(lastRow, 9).setValue(hora);
-    registrosSheet.getRange(lastRow, 10).setValue(duracionMin);
+    // Forzar número puro en Duracion_Min — Sheets no debe interpretarlo como fecha
+    const rangeMin = registrosSheet.getRange(lastRow, 10);
+    rangeMin.setValue(duracionMin);
+    rangeMin.setNumberFormat('0');
     empleadosSheet.getRange(emp.rowIndex, 9).setValue('Fuera');
 
     return {
@@ -509,6 +515,8 @@ function inicializarHojas() {
     regSheet.appendRow(['ID', 'Email', 'Nombre', 'Apellido', 'Sector', 'Turno', 'Fecha', 'Hora_Ingreso', 'Hora_Egreso', 'Duracion_Min', 'Dia_Semana']);
     regSheet.getRange('1:1').setFontWeight('bold').setBackground('#4F46E5').setFontColor('white');
   }
+  // Siempre forzar columna J (Duracion_Min) a formato numérico sin decimales
+  regSheet.getRange('J2:J10000').setNumberFormat('0');
 
   // Hoja Configuracion
   let cfgSheet = ss.getSheetByName('Configuracion');

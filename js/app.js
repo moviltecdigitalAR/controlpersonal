@@ -11,39 +11,93 @@ const App = (() => {
     empleado:    null
   };
 
-  // ---- Gestión de vistas ----
+  // ---- Inactividad: 5 min sin acción → vuelve al inicio ----
+  const INACTIVITY_MS = 5 * 60 * 1000;
+  let _inactivityTimer = null;
+  let _clockInterval   = null;
 
+  function _resetInactivity() {
+    clearTimeout(_inactivityTimer);
+    _inactivityTimer = setTimeout(() => {
+      const activa = document.querySelector('.view:not(.hidden)');
+      if (activa && ['view-confirm', 'view-signin', 'view-error'].includes(activa.id)) {
+        Auth.signOut();
+        window.location.reload();
+      }
+    }, INACTIVITY_MS);
+  }
+
+  function _initInactivity() {
+    ['click', 'touchstart', 'keydown'].forEach(ev =>
+      document.addEventListener(ev, _resetInactivity, { passive: true })
+    );
+    _resetInactivity();
+  }
+
+  // ---- Reloj en vivo ----
+  function _startClock(elementId) {
+    clearInterval(_clockInterval);
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const tick = () => {
+      const now = new Date();
+      el.textContent =
+        String(now.getHours()).padStart(2, '0')   + ':' +
+        String(now.getMinutes()).padStart(2, '0') + ':' +
+        String(now.getSeconds()).padStart(2, '0');
+    };
+    tick();
+    _clockInterval = setInterval(tick, 1000);
+  }
+
+  function _stopClock() {
+    clearInterval(_clockInterval);
+    _clockInterval = null;
+  }
+
+  // ---- Vistas ----
   function showView(id) {
     document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
     const el = document.getElementById(id);
     if (el) el.classList.remove('hidden');
     window.scrollTo(0, 0);
+    _resetInactivity();
+    if (id !== 'view-confirm') _stopClock();
   }
 
-  function setLoading(text = 'Procesando...') {
-    const el = document.getElementById('loading-text');
-    if (el) el.textContent = text;
+  function setLoading(text = 'Procesando...', step = '') {
+    const tEl = document.getElementById('loading-text');
+    const sEl = document.getElementById('loading-step');
+    const sTxt = document.getElementById('loading-step-txt');
+    if (tEl) tEl.textContent = text;
+    if (sEl && sTxt) {
+      if (step) { sTxt.textContent = step; sEl.style.display = 'inline-flex'; }
+      else       { sEl.style.display = 'none'; }
+    }
     showView('view-loading');
   }
 
   function showError(msg, title = 'Error', showRetry = true) {
-    const tEl = document.getElementById('error-title');
+    setText('error-title', title);
     const mEl = document.getElementById('error-msg');
-    const rBtn = document.getElementById('btn-retry');
-    if (tEl) tEl.textContent = title;
     if (mEl) mEl.textContent = msg;
-    if (rBtn) rBtn.style.display = showRetry ? 'inline-flex' : 'none';
+    const rBtn = document.getElementById('btn-retry');
+    if (rBtn) rBtn.style.display = showRetry ? '' : 'none';
     showView('view-error');
   }
 
-  // ---- Flujo principal ----
-
+  // ---- Flujo ----
   async function init() {
-    setLoading('Iniciando aplicación...');
+    _initInactivity();
+
+    // Aplicar nombre de empresa desde config
+    const appName = (window.APP_CONFIG || {}).APP_NAME || 'Control de Acceso';
+    ['loading-app-name', 'signin-app-title'].forEach(id => setText(id, appName));
+
+    setLoading('Iniciando aplicación...', 'Cargando sistema');
 
     try {
       await Auth.init();
-
       const user = Auth.getUser();
       if (user) {
         _state.user = user;
@@ -51,13 +105,7 @@ const App = (() => {
       } else {
         showView('view-signin');
         Auth.renderButton('google-btn-container');
-
-        // One Tap automático
-        window.__onAuthSuccess = async (u) => {
-          _state.user = u;
-          await proceed();
-        };
-
+        window.__onAuthSuccess = async (u) => { _state.user = u; await proceed(); };
         google.accounts.id.prompt();
       }
     } catch (err) {
@@ -67,22 +115,19 @@ const App = (() => {
 
   async function proceed() {
     try {
-      setLoading('Generando huella del dispositivo...');
+      setLoading('Generando huella del dispositivo...', 'Paso 1 de 3');
       _state.fingerprint = await Fingerprint.generate();
 
-      setLoading('Obteniendo ubicación GPS...');
+      setLoading('Obteniendo ubicación GPS...', 'Paso 2 de 3');
       try {
         _state.location = await Geo.getCurrentPosition();
       } catch (geoErr) {
-        // Si falla el GPS y el servidor tiene geofencing activo,
-        // el GAS lo rechazará. Si no tiene geofencing, continúa.
         _state.location = null;
-        console.warn('GPS no disponible:', geoErr.message);
+        console.warn('GPS:', geoErr.message);
       }
 
-      setLoading('Verificando empleado...');
+      setLoading('Verificando empleado...', 'Paso 3 de 3');
       const { lat, lng } = _state.location || {};
-
       const verif = await API.verificarEmpleado(
         _state.user.email,
         _state.fingerprint,
@@ -91,8 +136,8 @@ const App = (() => {
 
       if (!verif.success) {
         const titles = {
-          DEVICE_MISMATCH:  'Dispositivo no autorizado',
-          OUT_OF_GEOFENCE:  'Fuera del área permitida'
+          DEVICE_MISMATCH: 'Dispositivo no autorizado',
+          OUT_OF_GEOFENCE: 'Fuera del área permitida'
         };
         showError(verif.error, titles[verif.errorCode] || 'Verificación fallida', true);
         return;
@@ -102,42 +147,61 @@ const App = (() => {
       _showConfirmation();
 
     } catch (err) {
-      showError('Error de conexión. Verifique su acceso a internet e intente nuevamente.\n\nDetalle: ' + err.message);
+      showError(
+        'Error de conexión. Verifique su acceso a internet e intente nuevamente.\n\n' + err.message
+      );
     }
   }
 
   function _showConfirmation() {
-    const emp       = _state.empleado;
-    const isDentro  = emp.estado === 'Dentro';
+    const emp      = _state.empleado;
+    const isDentro = emp.estado === 'Dentro';
 
-    setText('confirm-nombre',  `${emp.nombre} ${emp.apellido}`);
-    setText('confirm-sector',  emp.sector || '—');
-    setText('confirm-turno',   emp.turno  || '—');
-    setText('confirm-estado-badge', isDentro ? 'DENTRO' : 'FUERA');
+    // Avatar con iniciales
+    const initials = ((emp.nombre || '?')[0] + (emp.apellido || '?')[0]).toUpperCase();
+    setText('confirm-avatar', initials);
 
-    const estadoBadge = document.getElementById('confirm-estado-badge');
-    if (estadoBadge) {
-      estadoBadge.className = 'estado-badge ' + (isDentro ? 'badge-dentro' : 'badge-fuera');
+    setText('confirm-nombre', `${emp.nombre} ${emp.apellido}`);
+
+    const sectorPill = document.getElementById('confirm-sector-pill');
+    const turnoPill  = document.getElementById('confirm-turno-pill');
+    if (sectorPill) sectorPill.textContent = emp.sector || 'Sin sector';
+    if (turnoPill) {
+      if (emp.turno) {
+        turnoPill.textContent = emp.turno;
+        turnoPill.style.display = '';
+      } else {
+        turnoPill.style.display = 'none';
+      }
     }
 
-    const btnTipo = document.getElementById('btn-confirmar');
-    if (btnTipo) {
-      btnTipo.textContent = isDentro ? '📤 Registrar SALIDA' : '📥 Registrar ENTRADA';
-      btnTipo.className   = 'btn ' + (isDentro ? 'btn-danger' : 'btn-success') + ' btn-lg btn-full';
-      btnTipo.onclick     = registrar;
+    const badge = document.getElementById('confirm-estado-badge');
+    if (badge) {
+      badge.textContent = isDentro ? '● DENTRO' : '● FUERA';
+      badge.className   = 'estado-badge ' + (isDentro ? 'badge-dentro' : 'badge-fuera');
+    }
+
+    const btn = document.getElementById('btn-confirmar');
+    if (btn) {
+      btn.textContent = isDentro ? '📤 Registrar SALIDA' : '📥 Registrar ENTRADA';
+      btn.className   = 'btn ' + (isDentro ? 'btn-danger' : 'btn-success') + ' btn-lg btn-full';
+      btn.disabled    = false;
+      btn.onclick     = registrar;
     }
 
     const btnCancelar = document.getElementById('btn-cancelar');
     if (btnCancelar) btnCancelar.onclick = () => { Auth.signOut(); window.location.reload(); };
 
     showView('view-confirm');
+    _startClock('confirm-live-time');
   }
 
   async function registrar() {
     const btnConf = document.getElementById('btn-confirmar');
     if (btnConf) btnConf.disabled = true;
+    _stopClock();
 
-    setLoading('Registrando...');
+    setLoading('Registrando...', 'Guardando en planilla');
 
     try {
       const { lat, lng } = _state.location || {};
@@ -157,51 +221,81 @@ const App = (() => {
 
     } catch (err) {
       if (btnConf) btnConf.disabled = false;
-      showError('No se pudo conectar con el servidor. ' + err.message);
+      showError('No se pudo conectar con el servidor.\n' + err.message);
     }
   }
 
   function _showSuccess(result) {
     const isIngreso = result.tipo === 'ingreso';
 
+    // Icono y clase del contenedor
+    const iconWrap = document.getElementById('success-icon-wrap');
+    if (iconWrap) {
+      iconWrap.className = 'success-icon-wrap ' + (isIngreso ? 'success-icon-ingreso' : 'success-icon-egreso');
+    }
+
+    // Fondo del view según tipo
+    const view = document.getElementById('view-success');
+    if (view) {
+      view.classList.remove('success-bg-ingreso', 'success-bg-egreso');
+      view.classList.add(isIngreso ? 'success-bg-ingreso' : 'success-bg-egreso');
+    }
+
     setText('success-icon',   isIngreso ? '✅' : '👋');
     setText('success-titulo', isIngreso ? '¡Ingreso registrado!' : '¡Salida registrada!');
     setText('success-nombre', `${result.empleado.nombre} ${result.empleado.apellido}`);
     setText('success-hora',   result.hora);
     setText('success-fecha',  `${result.fecha} — ${result.diaSemana || ''}`);
-    setText('success-sector', result.empleado.sector || '');
 
+    const sectTag = document.getElementById('success-sector');
+    if (sectTag) sectTag.textContent = '📋 ' + (result.empleado.sector || '—');
+
+    // Duración (solo en salidas)
     const durContainer = document.getElementById('success-duracion-container');
     if (durContainer) {
       if (!isIngreso && result.duracionFormato) {
         setText('success-duracion', result.duracionFormato);
         durContainer.classList.remove('hidden');
+        durContainer.style.display = 'flex';
       } else {
         durContainer.classList.add('hidden');
       }
     }
 
+    // Color del countdown fill
+    const fill = document.getElementById('countdown-fill');
+    if (fill) {
+      fill.className = 'countdown-fill ' + (isIngreso ? 'countdown-fill-green' : '');
+    }
+
     showView('view-success');
-    _startCountdown();
+
+    // Ingreso: 5s — Salida: 10s para leer la duración
+    _startCountdown(isIngreso ? 5 : 10);
   }
 
-  function _startCountdown() {
-    let secs = Math.round(window.APP_CONFIG.AUTO_CLOSE_DELAY / 1000);
-    setText('countdown', secs);
+  function _startCountdown(total) {
+    let remaining = total;
+    const numEl   = document.getElementById('countdown');
+    const fillEl  = document.getElementById('countdown-fill');
+
+    const update = () => {
+      if (numEl) numEl.textContent = remaining;
+      if (fillEl) fillEl.style.width = ((remaining / total) * 100) + '%';
+    };
+
+    update();
 
     const iv = setInterval(() => {
-      secs--;
-      setText('countdown', secs);
-      if (secs <= 0) {
+      remaining--;
+      update();
+      if (remaining <= 0) {
         clearInterval(iv);
-        showView('view-goodbye');
-        // Intentar cerrar la pestaña (funciona si fue abierta por JS)
-        setTimeout(() => { try { window.close(); } catch (_) {} }, 600);
+        Auth.signOut();
+        window.location.reload();
       }
     }, 1000);
   }
-
-  // ---- Utils ----
 
   function setText(id, text) {
     const el = document.getElementById(id);
