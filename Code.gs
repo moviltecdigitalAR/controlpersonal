@@ -230,10 +230,11 @@ function registrarMovimiento(data) {
     const duracionFormato = formatDuracion(duracionMin);
 
     registrosSheet.getRange(lastRow, 9).setValue(hora);
-    // Forzar número puro en Duracion_Min — Sheets no debe interpretarlo como fecha
+    // Guardar duración como TEXTO PLANO para que Sheets nunca lo convierta a fecha serial.
+    // setNumberFormat('@') = texto; se llama ANTES de setValue para que el formato gane.
     const rangeMin = registrosSheet.getRange(lastRow, 10);
-    rangeMin.setValue(duracionMin);
-    rangeMin.setNumberFormat('0');
+    rangeMin.setNumberFormat('@');
+    rangeMin.setValue(String(duracionMin));
     empleadosSheet.getRange(emp.rowIndex, 9).setValue('Fuera');
 
     return {
@@ -515,8 +516,8 @@ function inicializarHojas() {
     regSheet.appendRow(['ID', 'Email', 'Nombre', 'Apellido', 'Sector', 'Turno', 'Fecha', 'Hora_Ingreso', 'Hora_Egreso', 'Duracion_Min', 'Dia_Semana']);
     regSheet.getRange('1:1').setFontWeight('bold').setBackground('#4F46E5').setFontColor('white');
   }
-  // Siempre forzar columna J (Duracion_Min) a formato numérico sin decimales
-  regSheet.getRange('J2:J10000').setNumberFormat('0');
+  // Siempre forzar columna J (Duracion_Min) a texto plano — nunca debe ser fecha
+  regSheet.getRange('J2:J10000').setNumberFormat('@');
 
   // Hoja Configuracion
   let cfgSheet = ss.getSheetByName('Configuracion');

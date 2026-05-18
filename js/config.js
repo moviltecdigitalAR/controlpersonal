@@ -13,7 +13,7 @@ window.APP_CONFIG = {
   // URL del Web App de Google Apps Script (backend)
   // Obtener luego de desplegar Code.gs como Web App
   // Formato: https://script.google.com/macros/s/XXXXXXXX/exec
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbzpyQKWtEPHE4GiPWq1GxOg7JQPwn-vRbIO6NCI2Uz2Ijllm6Aws_UxyoqYHoioe2k/exec',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbw2Xvc-wUqoFwGVLeukt1xdslWXznz6FC2KHyeS9fMWYhmXqk0ma7XC0x6CF5V1ogM/exec',
 
   // Nombre del establecimiento (aparece en la pantalla)
   APP_NAME: 'Control de Acceso',
