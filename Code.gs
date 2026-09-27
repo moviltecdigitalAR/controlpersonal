@@ -116,9 +116,12 @@ function verificarEmpleado(data) {
   if (fingerprintId) {
     const devStored = String(empleado.dispositivoId || '').trim();
     const devSent   = String(fingerprintId).trim();
+    // Solo considerar válido si tiene el formato real de fingerprint (fp_xxxxx)
+    // Cualquier otro valor (vacío, "FALSE", espacio, etc.) se trata como no registrado
+    const devStoredValid = devStored.startsWith('fp_');
 
-    if (!devStored) {
-      // Primera vez: vincular dispositivo automáticamente
+    if (!devStoredValid) {
+      // Primera vez o valor inválido: vincular dispositivo automáticamente
       getEmpleadosSheet().getRange(emp.rowIndex, 6).setValue(devSent);
       empleado.dispositivoId = devSent;
       empleado.primerDispositivo = true;
@@ -185,9 +188,14 @@ function registrarMovimiento(data) {
       empleado.email, empleado.nombre, empleado.apellido,
       empleado.sector, empleado.turno,
       fecha, hora,
-      '', '',   // egreso y duración vacíos
+      '', '',   // egreso y duración: la fórmula se setea abajo
       diaSemana
     ]);
+    // Poner fórmula en col J: calcula duración h:mm:ss en cuanto se llene col I (egreso).
+    // MOD(...) soporta turnos que cruzan medianoche (ej: 23:00 → 01:00 = 2:00:00)
+    const filaIngreso = registrosSheet.getLastRow();
+    registrosSheet.getRange(filaIngreso, 10)
+      .setFormula('=IF(I' + filaIngreso + '="","",TEXT(MOD(TIMEVALUE(I' + filaIngreso + ')-TIMEVALUE(H' + filaIngreso + '),1),"[h]:mm:ss"))');
     empleadosSheet.getRange(emp.rowIndex, 9).setValue('Dentro');
 
     return {
@@ -220,20 +228,19 @@ function registrarMovimiento(data) {
       return { success: false, error: 'No se encontró un ingreso abierto. Estado reseteado a Fuera.' };
     }
 
-    // Calcular duración
-    const ingresoDate  = parseFechaHora(ingresoFecha, ingresoHora);
-    const duracionMin  = Math.max(0, Math.round((now - ingresoDate) / 60000));
-    if (isNaN(duracionMin)) duracionMin = 0;
-    const duracionFormato = formatDuracion(duracionMin);
+    // Calcular duración para mostrar en la app (no se escribe en sheet, la fórmula lo hace)
+    const ingresoDate    = parseFechaHora(ingresoFecha, ingresoHora);
+    const duracionSec    = Math.max(0, Math.round((now - ingresoDate) / 1000));
+    const duracionFormato = formatDuracionSec(duracionSec);
 
+    // Solo escribir la hora de egreso — la fórmula en col J calcula la duración sola
     registrosSheet.getRange(lastRow, 9).setValue(hora);
-    registrosSheet.getRange(lastRow, 10).setValue(duracionMin);
     empleadosSheet.getRange(emp.rowIndex, 9).setValue('Fuera');
 
     return {
       success: true, tipo: 'egreso',
       hora, fecha, diaSemana,
-      duracionMin, duracionFormato,
+      duracionSec, duracionFormato,
       empleado: { nombre: empleado.nombre, apellido: empleado.apellido, sector: empleado.sector, turno: empleado.turno }
     };
   }
@@ -338,10 +345,10 @@ function obtenerReporte(data) {
       apellido:    rows[i][3],
       sector:      rows[i][4],
       turno:       rows[i][5],
-      fecha:       rows[i][6],
-      horaIngreso: rows[i][7],
-      horaEgreso:  rows[i][8],
-      duracionMin: Number(rows[i][9]) || 0,
+      fecha:       fmtFechaCell(rows[i][6]),
+      horaIngreso: fmtHoraCell(rows[i][7]),
+      horaEgreso:  fmtHoraCell(rows[i][8]),
+      duracionMin: parseDuracionTexto(rows[i][9]),
       diaSemana:   rows[i][10]
     });
   }
@@ -449,6 +456,51 @@ function formatDuracion(min) {
   return h + 'h ' + m + 'm';
 }
 
+// Formato con segundos para mostrar en la app móvil al registrar salida
+function formatDuracionSec(secs) {
+  if (!secs || secs < 0) return '0h 0m 0s';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return h + 'h ' + m + 'm ' + s + 's';
+}
+
+// Lee la duración de la hoja: la fórmula genera "h:mm:ss" (ej "1:25:42"),
+// pero también acepta números enteros (registros viejos en minutos)
+function parseDuracionTexto(val) {
+  if (!val || val === '') return 0;
+  const str = String(val).trim();
+  // Formato de fórmula: "1:25:42" o "0:02:00"
+  const partes = str.split(':');
+  if (partes.length === 3) {
+    return parseInt(partes[0] || 0) * 60 + parseInt(partes[1] || 0);
+  }
+  // Compatibilidad con registros viejos (número de minutos guardado como texto)
+  return Number(str) || 0;
+}
+
+// Normaliza una celda de fecha (Date object o texto) a string dd/MM/yyyy
+function fmtFechaCell(val) {
+  if (val instanceof Date) {
+    const d = String(val.getDate()).padStart(2, '0');
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const y = val.getFullYear();
+    return d + '/' + m + '/' + y;
+  }
+  return String(val || '');
+}
+
+// Normaliza una celda de hora (Date object o texto) a string HH:mm:ss
+function fmtHoraCell(val) {
+  if (val instanceof Date) {
+    const h = String(val.getHours()).padStart(2, '0');
+    const m = String(val.getMinutes()).padStart(2, '0');
+    const s = String(val.getSeconds()).padStart(2, '0');
+    return h + ':' + m + ':' + s;
+  }
+  return String(val || '');
+}
+
 function parseFechaHora(fecha, hora) {
   let y, M, d;
   if (fecha instanceof Date) {
@@ -509,6 +561,8 @@ function inicializarHojas() {
     regSheet.appendRow(['ID', 'Email', 'Nombre', 'Apellido', 'Sector', 'Turno', 'Fecha', 'Hora_Ingreso', 'Hora_Egreso', 'Duracion_Min', 'Dia_Semana']);
     regSheet.getRange('1:1').setFontWeight('bold').setBackground('#4F46E5').setFontColor('white');
   }
+  // Siempre forzar columna J (Duracion_Min) a texto plano — nunca debe ser fecha
+  regSheet.getRange('J2:J10000').setNumberFormat('@');
 
   // Hoja Configuracion
   let cfgSheet = ss.getSheetByName('Configuracion');

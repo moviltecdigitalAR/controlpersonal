@@ -121,7 +121,7 @@ const Dashboard = (() => {
     const fuera    = _empleados.filter(e => e.estado !== 'Dentro' && e.activo).length;
     const total    = _empleados.filter(e => e.activo).length;
     const hoy      = _registros.filter(r => r.fecha === today).length;
-    const abiertos = _registros.filter(r => r.fecha === today && r.horaEgreso === '').length;
+    const abiertos = _registros.filter(r => r.fecha === today && !r.horaEgreso).length;
 
     setText('ov-dentro',   dentro);
     setText('ov-fuera',    fuera);
@@ -551,9 +551,15 @@ const Dashboard = (() => {
     _setupAgregarEmpleado();
   }
 
+  // Refresca la pestaña activa (botón "Actualizar" del topbar)
+  function refresh() {
+    _loadTab(_activeTab || 'overview');
+  }
+
   // Exponer para onclick en HTML
   return {
     init,
+    refresh,
     resetDispositivo,
     toggleActivo,
     verDetalleEmpleado,
