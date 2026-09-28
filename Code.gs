@@ -135,22 +135,43 @@ function verificarEmpleado(data) {
   }
 
   // ---- CAPA 3: Geofencing ----
-  if (lat !== undefined && lat !== null && lng !== undefined && lng !== null) {
-    const cfg = getConfigData();
-    if (cfg.lat_empresa && cfg.lng_empresa && cfg.radio_metros) {
-      const dist = haversine(
-        parseFloat(lat), parseFloat(lng),
-        parseFloat(cfg.lat_empresa), parseFloat(cfg.lng_empresa)
-      );
-      const radio = parseFloat(cfg.radio_metros);
-      if (dist > radio) {
-        return {
-          success:   false,
-          errorCode: 'OUT_OF_GEOFENCE',
-          error:     `Fuera del área permitida. Debe estar a menos de ${radio}m del establecimiento. Distancia actual: ${Math.round(dist)}m.`,
-          distancia: Math.round(dist)
-        };
-      }
+  const cfg = getConfigData();
+  const geofenceEnabled = cfg.lat_empresa !== undefined && cfg.lng_empresa !== undefined && cfg.radio_metros !== undefined &&
+    String(cfg.lat_empresa).trim() !== '' && String(cfg.lng_empresa).trim() !== '' && String(cfg.radio_metros).trim() !== '';
+
+  if (geofenceEnabled) {
+    const userLat = Number(lat);
+    const userLng = Number(lng);
+    const centerLat = Number(cfg.lat_empresa);
+    const centerLng = Number(cfg.lng_empresa);
+    const radio = Number(cfg.radio_metros);
+    const accuracy = Math.max(0, Number(data.accuracy) || 0);
+
+    if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) {
+      return {
+        success: false,
+        errorCode: 'LOCATION_REQUIRED',
+        error: 'No se pudo validar la ubicación GPS. Active los permisos de ubicación e intente nuevamente.'
+      };
+    }
+
+    if (!Number.isFinite(centerLat) || !Number.isFinite(centerLng) || !Number.isFinite(radio) || radio <= 0) {
+      return {
+        success: false,
+        errorCode: 'GEOFENCE_CONFIG',
+        error: 'La configuración del área GPS no es válida. Contacte al administrador.'
+      };
+    }
+
+    const dist = haversine(userLat, userLng, centerLat, centerLng);
+    if (accuracy > 200 || dist > radio) {
+      return {
+        success: false,
+        errorCode: 'OUT_OF_GEOFENCE',
+        error: `Ubicación fuera del área permitida o GPS impreciso. Radio: ${radio}m; distancia: ${Math.round(dist)}m; precisión: ±${Math.round(accuracy)}m.`,
+        distancia: Math.round(dist),
+        precision: Math.round(accuracy)
+      };
     }
   }
 
@@ -162,6 +183,29 @@ function verificarEmpleado(data) {
 // ============================================================
 
 function registrarMovimiento(data) {
+  const requestId = String(data.requestId || '').trim();
+  if (!requestId) return registrarMovimientoProcesar(data);
+  if (!/^[A-Za-z0-9_-]{8,100}$/.test(requestId)) {
+    return { success: false, error: 'Identificador de solicitud inválido.' };
+  }
+
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'mov_' + requestId;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const cached = cache.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
+    const result = registrarMovimientoProcesar(data);
+    cache.put(cacheKey, JSON.stringify(result), 21600);
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function registrarMovimientoProcesar(data) {
   const verif = verificarEmpleado(data);
   if (!verif.success) return verif;
 
