@@ -98,8 +98,56 @@ const Auth = (() => {
 
   function signOut() {
     sessionStorage.removeItem(SESSION_KEY);
+    clearAdminToken();
     if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
   }
 
-  return { init, signIn, renderButton, getUser, isSignedIn, signOut };
+  // ============================================================
+  // SESIÓN DE ADMINISTRADOR (token firmado del backend)
+  // ============================================================
+  // Después de entrar con Google, el admin valida una contraseña y el
+  // servidor devuelve un token HMAC firmado con expiración (12h).
+  // Ese token acompaña TODAS las acciones admin: sin él, el backend
+  // rechaza. Nunca se guarda en localStorage (solo sessionStorage,
+  // se borra al cerrar la pestaña).
+
+  const ADMIN_TOKEN_KEY = 'ca_admin_token';
+
+  function getAdminToken() {
+    try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || null; } catch { return null; }
+  }
+  function setAdminToken(t) {
+    try { sessionStorage.setItem(ADMIN_TOKEN_KEY, t); } catch (_) {}
+  }
+  function clearAdminToken() {
+    try { sessionStorage.removeItem(ADMIN_TOKEN_KEY); } catch (_) {}
+  }
+  function hasAdminSession() { return !!getAdminToken(); }
+
+  // Login admin: Google ya validó el email; acá pedimos la contraseña
+  // al backend, que verifica el hash y devuelve el token firmado.
+  async function adminLogin(email, password) {
+    const r = await API.call('loginAdmin', { email, password });
+    if (!r.success) return r;
+    setAdminToken(r.token);
+    return r;
+  }
+
+  // Validar que el token guardado siga vigente (al recargar la página)
+  async function validarAdminSession() {
+    const token = getAdminToken();
+    if (!token) return { success: false };
+    const r = await API.call('validarToken', { token });
+    if (!r.success) clearAdminToken();
+    return r;
+  }
+
+  async function adminLogout() {
+    const token = getAdminToken();
+    if (token) { try { await API.call('logoutAdmin', { token }); } catch (_) {} }
+    clearAdminToken();
+  }
+
+  return { init, signIn, renderButton, getUser, isSignedIn, signOut,
+           getAdminToken, adminLogin, validarAdminSession, hasAdminSession, adminLogout };
 })();

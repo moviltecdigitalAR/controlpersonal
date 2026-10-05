@@ -44,6 +44,15 @@ const Dashboard = (() => {
 
       // Verificar que el email tiene permisos admin en Sheets
       const empResult = await API.obtenerEmpleados(user.email);
+      const errTxt = String(empResult.error || '').toLowerCase();
+      if (!empResult.success && errTxt.indexOf('permiso') !== -1 && empResult.empleados === undefined && !empResult.config) {
+        // El backend está en modo seguro (rechazó por falta de token):
+        // no podemos confirmar permisos aún, pedimos la contraseña.
+        _admin = user;
+        _setLoading(false);
+        _pedirPassword(user.email);
+        return;
+      }
       if (!empResult.success) {
         _showAdminError('Sin permisos de administrador. Verifique que su email esté marcado como Es_Admin=TRUE en la planilla.');
         Auth.signOut();
@@ -53,6 +62,50 @@ const Dashboard = (() => {
       _admin     = user;
       _empleados = empResult.empleados;
 
+      // Segundo factor: si hay SESSION_SECRET configurado en el backend,
+      // el login exige contraseña. Si ya tenemos token válido, entramos directo.
+      _setLoading(true, 'Verificando sesión segura...');
+      const sesion = await Auth.validarAdminSession();
+      if (sesion.success) return _entrarPanel();
+      _pedirPassword(user.email);
+
+    } catch (err) {
+      _showAdminError('Error al conectar: ' + err.message);
+    }
+  }
+
+  // Mostrar la pantalla de contraseña de administrador
+  function _pedirPassword(email) {
+    _setLoading(false);
+    setText('admin-pass-email', email);
+    _showSection('admin-pass');
+    const form = document.getElementById('admin-pass-form');
+    if (form && !form.dataset.bound) {
+      form.dataset.bound = '1';
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pass = document.getElementById('admin-pass-input').value;
+        const btn  = document.getElementById('admin-pass-btn');
+        const msg  = document.getElementById('admin-pass-msg');
+        btn.disabled = true;
+        btn.textContent = 'Verificando...';
+        if (msg) msg.innerHTML = '';
+        try {
+          const r = await Auth.adminLogin(_admin.email, pass);
+          if (!r.success) throw new Error(r.error || 'Contraseña incorrecta.');
+          _entrarPanel();
+        } catch (err) {
+          if (msg) msg.innerHTML = `<div class="form-msg error">${_esc(err.message)}</div>`;
+          btn.disabled = false;
+          btn.textContent = 'Ingresar al panel';
+        }
+      });
+    }
+    setTimeout(() => document.getElementById('admin-pass-input')?.focus(), 50);
+  }
+
+  // Entrar al panel (ya validado Google + contraseña)
+  function _entrarPanel() {
       setText('admin-user-name',    _admin.name || _admin.email);
       setText('admin-user-email',   _admin.email);
       if (_admin.picture) {
@@ -65,10 +118,6 @@ const Dashboard = (() => {
       _setupTabs();
       Operacion.init(_admin);   // Módulo Operación (ex-ShiftControl)
       _loadTab('overview');
-
-    } catch (err) {
-      _showAdminError('Error al conectar: ' + err.message);
-    }
   }
 
   // ============================================================

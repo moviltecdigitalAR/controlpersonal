@@ -13,7 +13,16 @@ const API = (() => {
 
   async function call(action, params = {}, retrySafe = false) {
     const url = window.APP_CONFIG.GAS_URL;
-    const body = JSON.stringify({ action, ...params });
+    // Adjuntar el token de sesión admin a todas las acciones que lo
+    // requieran. El backend lo verifica (firma HMAC + expiración) y
+    // rechaza si no es válido. Las acciones públicas (login, fichada
+    // de empleado) no llevan token.
+    let payload = { action, ...params };
+    if (!params.token && window.Auth && typeof Auth.getAdminToken === 'function') {
+      const t = Auth.getAdminToken();
+      if (t) payload.token = t;
+    }
+    const body = JSON.stringify(payload);
     const maxAttempts = retrySafe ? 3 : 1;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {

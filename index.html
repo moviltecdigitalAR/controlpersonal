@@ -194,6 +194,24 @@
     </div>
   </div>
 
+  <!-- Admin Contraseña (segundo factor después de Google) -->
+  <div id="admin-pass" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1.5rem">
+    <div class="card" style="max-width:400px;width:100%">
+      <div class="card-icon">🔑</div>
+      <h2 class="card-title">Confirmar identidad</h2>
+      <p class="card-subtitle">Ingresó como <strong id="admin-pass-email" style="color:var(--primary)"></strong>.<br/>Por seguridad, confirme su contraseña de administrador.</p>
+      <form id="admin-pass-form">
+        <div class="form-group">
+          <label class="form-label" for="admin-pass-input">Contraseña de administrador</label>
+          <input type="password" id="admin-pass-input" class="form-input" placeholder="••••••••" autocomplete="current-password" required />
+        </div>
+        <div id="admin-pass-msg"></div>
+        <button type="submit" id="admin-pass-btn" class="btn btn-primary" style="width:100%">Ingresar al panel</button>
+      </form>
+      <button onclick="Auth.signOut();window.location.reload()" class="btn btn-outline" style="width:100%;margin-top:.6rem">Usar otra cuenta</button>
+    </div>
+  </div>
+
   <!-- Admin Dashboard -->
   <div id="admin-dashboard" class="hidden admin-layout">
 
