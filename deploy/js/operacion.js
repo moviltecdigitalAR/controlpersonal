@@ -81,20 +81,32 @@ const Operacion = (() => {
     // Cambio de tipo en el form de observación ajusta el datalist de entidad
     const obsTipo = document.getElementById('obs-tipo');
     if (obsTipo) obsTipo.addEventListener('change', () => _fillEntidades(obsTipo.value));
+
+    // Tecla ESC cierra el modal de edición
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') _modal.close();
+    });
   }
 
   // ---------- delegación ----------
   function _onDelegatedClick(e) {
+    // Cerrar modal si se hace click en el fondo oscuro
+    if (e.target.id === 'op-modal-overlay') { _modal.close(); return; }
     const btn = e.target.closest('[data-op]');
     if (!btn) return;
     const { op, id, email, nombre } = btn.dataset;
     const handlers = {
-      resolverObs:   () => _resolverObservacion(id),
-      asignarRem:    () => _asignarReemplazo(id),
-      descartarRem:  () => _descartarReemplazo(id),
-      marcarLeidas:  () => _marcarAlertasLeidas(),
-      obsEmpleado:   () => _abrirObsEmpleado(email, nombre),
-      cerrarObsEmp:  () => _cerrarObsEmpleado()
+      resolverObs:     () => _resolverObservacion(id),
+      asignarRem:      () => _asignarReemplazo(id),
+      descartarRem:    () => _descartarReemplazo(id),
+      marcarLeidas:    () => _marcarAlertasLeidas(),
+      obsEmpleado:     () => _abrirObsEmpleado(email, nombre),
+      cerrarObsEmp:    () => _cerrarObsEmpleado(),
+      editarVehiculo:  () => _editarVehiculo(id),
+      editarEmpresa:   () => _editarEmpresa(id),
+      editarEmpleado:  () => _editarEmpleado(email),
+      modalClose:      () => _modal.close(),
+      modalCancel:     () => _modal.close()
     };
     if (handlers[op]) { e.preventDefault(); handlers[op](); }
   }
@@ -132,7 +144,7 @@ const Operacion = (() => {
       if (tab === 'empresas')      _renderEmpresas();
     } catch (err) {
       console.error('[Operacion]', err);
-      ['op-stats','hab-tbody','rem-lista','obs-tbody','alrt-lista','veh-tbody','emp-tbody','traza-tbody'].forEach(id => {
+      ['op-stats','hab-tbody','rem-lista','obs-tbody','alrt-lista','veh-tbody','empr-tbody','traza-tbody'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerHTML = `<div class="form-msg error">${_esc(err.message)}</div>`;
       });
@@ -190,8 +202,12 @@ const Operacion = (() => {
           </select>
         </td>
         <td>
-          <button data-op="obsEmpleado" data-email="${_esc(e.email)}" data-nombre="${_esc(e.nombre + ' ' + e.apellido)}"
-                  class="btn btn-sm btn-outline">📝 Observación</button>
+          <div style="display:flex;gap:.35rem;flex-wrap:wrap">
+            <button data-op="obsEmpleado" data-email="${_esc(e.email)}" data-nombre="${_esc(e.nombre + ' ' + e.apellido)}"
+                    class="btn btn-sm btn-outline">📝 Observación</button>
+            <button data-op="editarEmpleado" data-email="${_esc(e.email)}"
+                    class="btn btn-sm btn-outline">✏️ Editar</button>
+          </div>
         </td>
       </tr>`).join('');
   }
@@ -471,7 +487,7 @@ const Operacion = (() => {
     const vehs = _data.vehiculos || [];
 
     if (!vehs.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Sin vehículos cargados.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Sin vehículos cargados.</td></tr>';
       return;
     }
 
@@ -489,6 +505,9 @@ const Operacion = (() => {
             <option value="observado"  ${v.estado === 'observado'  ? 'selected' : ''}>Observado</option>
             <option value="bloqueado"  ${v.estado === 'bloqueado'  ? 'selected' : ''}>Bloqueado</option>
           </select>
+        </td>
+        <td>
+          <button data-op="editarVehiculo" data-id="${_esc(v.id)}" class="btn btn-sm btn-outline">✏️ Editar</button>
         </td>
       </tr>`).join('');
   }
@@ -524,12 +543,12 @@ const Operacion = (() => {
   // TAB: EMPRESAS
   // ============================================================
   function _renderEmpresas() {
-    const tbody = document.getElementById('emp-tbody');
+    const tbody = document.getElementById('empr-tbody');
     if (!tbody) return;
     const emps = _data.empresas || [];
 
     if (!emps.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Sin empresas cargadas.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Sin empresas cargadas.</td></tr>';
       return;
     }
 
@@ -549,26 +568,29 @@ const Operacion = (() => {
             <option value="Finalizado" ${c.contrato === 'Finalizado' ? 'selected' : ''}>Finalizado</option>
           </select>
         </td>
+        <td>
+          <button data-op="editarEmpresa" data-id="${_esc(c.id)}" class="btn btn-sm btn-outline">✏️ Editar</button>
+        </td>
       </tr>`).join('');
   }
 
   async function _submitEmpresa() {
     const c = {
-      nombre: _val('emp-nombre'),
-      tipo: _val('emp-tipo'),
-      cuit: _val('emp-cuit'),
-      artVenc: _val('emp-art'),
-      seguroVenc: _val('emp-seguro')
+      nombre: _val('empr-nombre'),
+      tipo: _val('empr-tipo'),
+      cuit: _val('empr-cuit'),
+      artVenc: _val('empr-art'),
+      seguroVenc: _val('empr-seguro')
     };
-    if (!c.nombre) { _msg('emp-msg', false, 'La razón social es obligatoria.'); return; }
+    if (!c.nombre) { _msg('empr-msg', false, 'La razón social es obligatoria.'); return; }
     const r = await API.agregarEmpresa(_admin.email, c);
     if (r.success) {
-      ['emp-nombre', 'emp-tipo', 'emp-cuit', 'emp-art', 'emp-seguro'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-      _msg('emp-msg', true, r.message || 'Empresa agregada.');
+      ['empr-nombre', 'empr-tipo', 'empr-cuit', 'empr-art', 'empr-seguro'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      _msg('empr-msg', true, r.message || 'Empresa agregada.');
       await load(true);
       _renderEmpresas();
     } else {
-      _msg('emp-msg', false, r.error || 'Error al agregar.');
+      _msg('empr-msg', false, r.error || 'Error al agregar.');
     }
   }
 
@@ -607,6 +629,148 @@ const Operacion = (() => {
         <td style="max-width:480px">${_esc(t.accion)}</td>
         <td>${colorBadge[t.color] || colorBadge.azul}</td>
       </tr>`).join('');
+  }
+
+  // ============================================================
+  // MODAL DE EDICIÓN (datos maestros: vehículos, empresas, personal)
+  // Solo se envían al backend los campos que cambiaron.
+  // Cada cambio queda registrado en la hoja Trazabilidad.
+  // ============================================================
+  const _toISO = (s) => {
+    if (!s) return '';
+    const str = String(s).trim();
+    const m = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    return '';
+  };
+
+  const _modal = {
+    open(title, fields, onSave) {
+      const ov = document.getElementById('op-modal-overlay');
+      const tt = document.getElementById('op-modal-title');
+      const bb = document.getElementById('op-modal-body');
+      const mm = document.getElementById('op-modal-msg');
+      if (!ov || !bb) return;
+      tt.textContent = title;
+      if (mm) mm.innerHTML = '';
+      bb.innerHTML = fields.map(f => `
+        <div class="form-group" style="margin-bottom:.85rem">
+          <label class="form-label">${_esc(f.label)}</label>
+          ${f.type === 'select'
+            ? `<select id="opmf-${_esc(f.key)}" class="form-input">${(f.options || []).map(o =>
+                `<option value="${_esc(o)}" ${o === f.value ? 'selected' : ''}>${o === '' ? '— Sin asignar —' : _esc(o)}</option>`).join('')}</select>`
+            : `<input type="${f.type || 'text'}" id="opmf-${_esc(f.key)}" class="form-input" value="${_esc(f.value || '')}" />`}
+        </div>`).join('');
+
+      const saveBtn = document.getElementById('op-modal-save');
+      const fresh = saveBtn.cloneNode(true);
+      saveBtn.parentNode.replaceChild(fresh, saveBtn);
+      fresh.addEventListener('click', async () => {
+        const vals = {};
+        fields.forEach(f => { vals[f.key] = _val('opmf-' + f.key); });
+        fresh.disabled = true;
+        fresh.textContent = 'Guardando...';
+        try {
+          await onSave(vals);
+          ov.classList.add('hidden');
+        } catch (err) {
+          _msg('op-modal-msg', false, err.message || 'Error al guardar.');
+        } finally {
+          fresh.disabled = false;
+          fresh.textContent = '💾 Guardar cambios';
+        }
+      });
+      ov.classList.remove('hidden');
+    },
+    close() {
+      const ov = document.getElementById('op-modal-overlay');
+      if (ov) ov.classList.add('hidden');
+    }
+  };
+
+  // Envía solo los campos modificados, uno por acción (cada uno queda en trazabilidad)
+  async function _applyUpdates(tipo, id, original, vals) {
+    const calls = {
+      vehiculo: (campo, valor) => API.actualizarVehiculo(_admin.email, id, campo, valor),
+      empresa:  (campo, valor) => API.actualizarEmpresa(_admin.email, id, campo, valor),
+      empleado: (campo, valor) => API.actualizarEmpleado(_admin.email, id, campo, valor)
+    };
+    const fn = calls[tipo];
+    let cambios = 0;
+    for (const [campo, valor] of Object.entries(vals)) {
+      const prev = String(original[campo] || '').trim();
+      const next = String(valor || '').trim();
+      const prevNorm = /Venc$/.test(campo) ? _toISO(prev) : prev; // fechas: comparar en ISO
+      const nextNorm = /Venc$/.test(campo) ? _toISO(next) : next;
+      if (prevNorm === nextNorm) continue;
+      const r = await fn(campo, valor);
+      if (!r.success) throw new Error(r.error || `No se pudo actualizar el campo "${campo}".`);
+      cambios++;
+    }
+    if (!cambios) throw new Error('No se detectaron cambios para guardar.');
+  }
+
+  function _editarVehiculo(id) {
+    const v = (_data.vehiculos || []).find(x => x.id === id);
+    if (!v) return;
+    const empresas = (_data.empresas || []).map(c => c.nombre);
+    _modal.open(`Editar vehículo — ${v.patente}`, [
+      { key: 'patente',    label: 'Patente', value: v.patente },
+      { key: 'tipo',       label: 'Tipo', value: v.tipo || '' },
+      { key: 'empresa',    label: 'Empresa', type: 'select', value: v.empresa || '', options: [''].concat(empresas) },
+      { key: 'seguroVenc', label: 'Vencimiento seguro', type: 'date', value: _toISO(v.seguroVenc) },
+      { key: 'vtvVenc',    label: 'Vencimiento VTV', type: 'date', value: _toISO(v.vtvVenc) },
+      { key: 'obs',        label: 'Observaciones', value: v.obs || '' }
+    ], async (vals) => {
+      if (vals.patente && vals.patente.toUpperCase() !== String(v.patente).toUpperCase()) {
+        const dup = (_data.vehiculos || []).some(x => x.id !== id &&
+          String(x.patente).toUpperCase() === vals.patente.toUpperCase());
+        if (dup) throw new Error('Ya existe otro vehículo con esa patente.');
+      }
+      await _applyUpdates('vehiculo', id, v, vals);
+      await load(true);
+      _renderVehiculos();
+    });
+  }
+
+  function _editarEmpresa(id) {
+    const c = (_data.empresas || []).find(x => x.id === id);
+    if (!c) return;
+    _modal.open(`Editar empresa — ${c.nombre}`, [
+      { key: 'nombre',     label: 'Razón social', value: c.nombre },
+      { key: 'tipo',       label: 'Tipo', value: c.tipo || '' },
+      { key: 'cuit',       label: 'CUIT', value: c.cuit || '' },
+      { key: 'artVenc',    label: 'Vencimiento ART', type: 'date', value: _toISO(c.artVenc) },
+      { key: 'seguroVenc', label: 'Vencimiento seguro', type: 'date', value: _toISO(c.seguroVenc) }
+    ], async (vals) => {
+      if (vals.nombre && vals.nombre.toLowerCase() !== String(c.nombre).toLowerCase()) {
+        const dup = (_data.empresas || []).some(x => x.id !== id &&
+          String(x.nombre).toLowerCase() === vals.nombre.toLowerCase());
+        if (dup) throw new Error('Ya existe otra empresa con ese nombre.');
+      }
+      await _applyUpdates('empresa', id, c, vals);
+      await load(true);
+      _renderEmpresas();
+    });
+  }
+
+  function _editarEmpleado(email) {
+    const e = (_data.empleados || []).find(x => x.email === email);
+    if (!e) return;
+    const empresas = (_data.empresas || []).map(c => c.nombre);
+    _modal.open(`Editar documentos — ${e.nombre} ${e.apellido}`, [
+      { key: 'dni',           label: 'DNI', value: e.dni || '' },
+      { key: 'telefono',      label: 'Teléfono', value: e.telefono || '' },
+      { key: 'empresa',       label: 'Empresa', type: 'select', value: e.empresa || '', options: [''].concat(empresas) },
+      { key: 'aptoVenc',      label: 'Vencimiento apto médico', type: 'date', value: _toISO(e.aptoVenc) },
+      { key: 'licenciaTipo',  label: 'Tipo de licencia', value: e.licenciaTipo || '' },
+      { key: 'licenciaVenc',  label: 'Vencimiento licencia', type: 'date', value: _toISO(e.licenciaVenc) }
+    ], async (vals) => {
+      await _applyUpdates('empleado', email, e, vals);
+      await load(true);
+      _renderHabilitaciones();
+    });
   }
 
   // ---------- helpers de selects ----------

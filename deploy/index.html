@@ -863,10 +863,11 @@
                     <th>VTV</th>
                     <th>Estado</th>
                     <th>Habilitación</th>
+                    <th>Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="veh-tbody">
-                  <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                  <tr><td colspan="8" class="text-center text-muted">Cargando...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -886,28 +887,28 @@
               <div class="form-row">
                 <div class="form-group" style="flex:2">
                   <label class="form-label">Razón social</label>
-                  <input type="text" id="emp-nombre" class="form-input" placeholder="Nombre de la empresa" />
+                  <input type="text" id="empr-nombre" class="form-input" placeholder="Nombre de la empresa" />
                 </div>
                 <div class="form-group">
                   <label class="form-label">Tipo</label>
-                  <input type="text" id="emp-tipo" class="form-input" placeholder="Contratista / Proveedor" />
+                  <input type="text" id="empr-tipo" class="form-input" placeholder="Contratista / Proveedor" />
                 </div>
                 <div class="form-group">
                   <label class="form-label">CUIT</label>
-                  <input type="text" id="emp-cuit" class="form-input" placeholder="30-12345678-9" />
+                  <input type="text" id="empr-cuit" class="form-input" placeholder="30-12345678-9" />
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label">Vencimiento ART</label>
-                  <input type="date" id="emp-art" class="form-input" />
+                  <input type="date" id="empr-art" class="form-input" />
                 </div>
                 <div class="form-group">
                   <label class="form-label">Vencimiento seguro</label>
-                  <input type="date" id="emp-seguro" class="form-input" />
+                  <input type="date" id="empr-seguro" class="form-input" />
                 </div>
               </div>
-              <div id="emp-msg"></div>
+              <div id="empr-msg"></div>
               <button type="submit" class="btn btn-primary">💾 Agregar empresa</button>
             </form>
           </div>
@@ -928,10 +929,11 @@
                     <th>Personal</th>
                     <th>Vehículos</th>
                     <th>Contrato</th>
+                    <th>Acciones</th>
                   </tr>
                 </thead>
-                <tbody id="emp-tbody">
-                  <tr><td colspan="8" class="text-center text-muted">Cargando...</td></tr>
+                <tbody id="empr-tbody">
+                  <tr><td colspan="9" class="text-center text-muted">Cargando...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -960,6 +962,24 @@
                   <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             MODAL DE EDICIÓN (módulo Operación)
+             ============================== -->
+        <div id="op-modal-overlay" class="op-modal-overlay hidden">
+          <div class="op-modal" role="dialog" aria-modal="true">
+            <div class="op-modal-header">
+              <h3 id="op-modal-title">Editar</h3>
+              <button type="button" data-op="modalClose" class="op-modal-close" aria-label="Cerrar">×</button>
+            </div>
+            <div class="op-modal-body" id="op-modal-body"></div>
+            <div id="op-modal-msg"></div>
+            <div class="op-modal-footer">
+              <button type="button" data-op="modalCancel" class="btn btn-outline">Cancelar</button>
+              <button type="button" id="op-modal-save" class="btn btn-primary">💾 Guardar cambios</button>
             </div>
           </div>
         </div>

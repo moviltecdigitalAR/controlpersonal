@@ -417,6 +417,74 @@ input, select, textarea { font-family: inherit; font-size: 1rem; }
   padding-top: .9rem;
 }
 
+/* Modal de edición (módulo Operación) */
+.op-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(15, 23, 42, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.op-modal-overlay.hidden { display: none; }
+.op-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, .28);
+  animation: opModalIn .18s ease-out;
+}
+@keyframes opModalIn {
+  from { opacity: 0; transform: translateY(12px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+.op-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.05rem 1.4rem;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  z-index: 1;
+}
+.op-modal-header h3 {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--gray-900);
+}
+.op-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--gray-500, #64748B);
+  cursor: pointer;
+  padding: .2rem .45rem;
+  border-radius: 8px;
+}
+.op-modal-close:hover { background: var(--gray-100, #F1F5F9); }
+.op-modal-body { padding: 1.25rem 1.4rem .25rem; }
+.op-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: .6rem;
+  padding: 1rem 1.4rem;
+  border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  border-radius: 0 0 16px 16px;
+}
+
 /* Outline para fondos claros (panel admin) */
 .btn-outline {
   background: transparent;
