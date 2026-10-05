@@ -224,6 +224,26 @@
         <button class="nav-item" data-tab="settings">
           <span class="nav-item-icon">⚙️</span> Configuración
         </button>
+
+        <div class="nav-section-label">OPERACIÓN</div>
+        <button class="nav-item" data-tab="operacion">
+          <span class="nav-item-icon">🦺</span> Habilitaciones
+        </button>
+        <button class="nav-item" data-tab="reemplazos">
+          <span class="nav-item-icon">🔄</span> Reemplazos
+        </button>
+        <button class="nav-item" data-tab="observaciones">
+          <span class="nav-item-icon">⚠️</span> Observaciones
+        </button>
+        <button class="nav-item" data-tab="vehiculos">
+          <span class="nav-item-icon">🚚</span> Vehículos
+        </button>
+        <button class="nav-item" data-tab="empresas">
+          <span class="nav-item-icon">🏭</span> Empresas
+        </button>
+        <button class="nav-item" data-tab="trazabilidad">
+          <span class="nav-item-icon">🔍</span> Trazabilidad
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -560,6 +580,389 @@
           </div>
 
         </div>
+
+        <!-- ==============================
+             TAB: OPERACIÓN / HABILITACIONES
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="operacion">
+
+          <div class="stats-grid" id="op-stats">
+            <div class="stat-card">
+              <div class="stat-value" id="op-total">—</div>
+              <div class="stat-label">Personal activo</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="op-habilitados">—</div>
+              <div class="stat-label">Habilitados</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="op-observados">—</div>
+              <div class="stat-label">Observados</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="op-bloqueados">—</div>
+              <div class="stat-label">Bloqueados</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="op-docs">—</div>
+              <div class="stat-label">Docs por vencer / vencidos</div>
+            </div>
+          </div>
+
+          <!-- Panel de observación rápida sobre un empleado -->
+          <div id="obs-emp-panel" class="hidden" style="background:var(--gray-50);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1.25rem">
+            <h4 id="obs-emp-titulo" style="font-weight:700;margin-bottom:.75rem">Observación</h4>
+            <form id="form-obs-empleado" novalidate>
+              <input type="hidden" id="obs-emp-email" value="" />
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Severidad</label>
+                  <select id="obs-emp-sev" class="form-input">
+                    <option value="observado">Observado</option>
+                    <option value="bloqueado">Bloqueado (impide fichar)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Descripción</label>
+                  <input type="text" id="obs-emp-desc" class="form-input" placeholder="Motivo de la observación..." />
+                </div>
+              </div>
+              <div id="obs-emp-msg"></div>
+              <div style="display:flex;gap:.5rem;margin-top:.5rem">
+                <button type="submit" class="btn btn-primary btn-sm">💾 Registrar</button>
+                <button type="button" data-op="cerrarObsEmp" class="btn btn-outline btn-sm">Cancelar</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="filters-bar" style="margin-bottom:1rem">
+            <input type="text" id="hab-search" data-op="busquedaHab" class="form-input" placeholder="🔍 Buscar por nombre, empresa o sector..." style="flex:1;min-width:220px" />
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Habilitaciones del personal</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empleado</th>
+                    <th>Empresa</th>
+                    <th>Sector</th>
+                    <th>Apto médico</th>
+                    <th>Licencia</th>
+                    <th>Habilitación</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="hab-tbody">
+                  <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: REEMPLAZOS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="reemplazos">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Registrar ausencia</span>
+            </div>
+            <form id="form-reemplazo" novalidate style="padding:1.25rem">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Empleado ausente</label>
+                  <select id="rem-ausente" class="form-input"></select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Turno</label>
+                  <input type="text" id="rem-turno" class="form-input" placeholder="Ej: 12h día" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Causa</label>
+                  <input type="text" id="rem-causa" class="form-input" placeholder="Ej: Licencia médica" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Candidato 1</label>
+                  <input type="text" id="rem-cand1" class="form-input" placeholder="Nombre del reemplazo" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Candidato 2</label>
+                  <input type="text" id="rem-cand2" class="form-input" placeholder="Opcional" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Candidato 3</label>
+                  <input type="text" id="rem-cand3" class="form-input" placeholder="Opcional" />
+                </div>
+              </div>
+              <label style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">
+                <input type="checkbox" id="rem-urgente" /> <span style="font-size:.85rem">Cubertura urgente</span>
+              </label>
+              <div id="rem-msg"></div>
+              <button type="submit" class="btn btn-primary">💾 Registrar ausencia</button>
+            </form>
+          </div>
+
+          <div id="rem-lista">
+            <p class="text-muted">Cargando...</p>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: OBSERVACIONES + ALERTAS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="observaciones">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Nueva observación</span>
+            </div>
+            <form id="form-observacion" novalidate style="padding:1.25rem">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Tipo</label>
+                  <select id="obs-tipo" class="form-input">
+                    <option value="Personal">Personal</option>
+                    <option value="Vehículo">Vehículo</option>
+                    <option value="Empresa">Empresa</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Entidad</label>
+                  <input type="text" id="obs-entidad" class="form-input" list="obs-entidades" placeholder="A quién/qué corresponde" />
+                  <datalist id="obs-entidades"></datalist>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Empresa</label>
+                  <select id="obs-empresa" class="form-input"></select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Severidad</label>
+                  <select id="obs-sev" class="form-input">
+                    <option value="observado">Observado</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex:3">
+                  <label class="form-label">Descripción</label>
+                  <input type="text" id="obs-desc" class="form-input" placeholder="Detalle de la observación..." />
+                </div>
+              </div>
+              <div id="obs-msg"></div>
+              <button type="submit" class="btn btn-primary">💾 Registrar observación</button>
+            </form>
+          </div>
+
+          <div class="filters-bar" style="margin-bottom:1rem">
+            <input type="text" id="obs-search" data-op="busquedaObs" class="form-input" placeholder="🔍 Buscar observaciones..." style="flex:1;min-width:220px" />
+            <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem">
+              <input type="checkbox" id="obs-solo-pend" data-op="busquedaObs" /> Solo pendientes
+            </label>
+          </div>
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Observaciones registradas</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Entidad</th>
+                    <th>Descripción</th>
+                    <th>Severidad</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="obs-tbody">
+                  <tr><td colspan="6" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">🔔 Alertas — <span id="alrt-count" style="font-weight:400"></span></span>
+              <button data-op="marcarLeidas" id="btn-marcar-leidas" class="btn btn-sm btn-outline" style="display:none">
+                ✓ Marcar todas como leídas
+              </button>
+            </div>
+            <div id="alrt-lista" style="max-height:340px;overflow-y:auto">
+              <p class="text-muted" style="padding:.75rem">Cargando...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: VEHÍCULOS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="vehiculos">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Agregar vehículo</span>
+            </div>
+            <form id="form-vehiculo" novalidate style="padding:1.25rem">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Patente</label>
+                  <input type="text" id="veh-patente" class="form-input" placeholder="AB123CD" style="text-transform:uppercase" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Tipo</label>
+                  <input type="text" id="veh-tipo" class="form-input" placeholder="Camioneta / Camión / Utilitario" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Empresa</label>
+                  <select id="veh-empresa" class="form-input"></select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Vencimiento seguro</label>
+                  <input type="date" id="veh-seguro" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Vencimiento VTV</label>
+                  <input type="date" id="veh-vtv" class="form-input" />
+                </div>
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Observaciones</label>
+                  <input type="text" id="veh-obs" class="form-input" placeholder="Opcional" />
+                </div>
+              </div>
+              <div id="veh-msg"></div>
+              <button type="submit" class="btn btn-primary">💾 Agregar vehículo</button>
+            </form>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Flota</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Patente</th>
+                    <th>Tipo</th>
+                    <th>Empresa</th>
+                    <th>Seguro</th>
+                    <th>VTV</th>
+                    <th>Estado</th>
+                    <th>Habilitación</th>
+                  </tr>
+                </thead>
+                <tbody id="veh-tbody">
+                  <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: EMPRESAS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="empresas">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Agregar empresa</span>
+            </div>
+            <form id="form-empresa" novalidate style="padding:1.25rem">
+              <div class="form-row">
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Razón social</label>
+                  <input type="text" id="emp-nombre" class="form-input" placeholder="Nombre de la empresa" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Tipo</label>
+                  <input type="text" id="emp-tipo" class="form-input" placeholder="Contratista / Proveedor" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">CUIT</label>
+                  <input type="text" id="emp-cuit" class="form-input" placeholder="30-12345678-9" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Vencimiento ART</label>
+                  <input type="date" id="emp-art" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Vencimiento seguro</label>
+                  <input type="date" id="emp-seguro" class="form-input" />
+                </div>
+              </div>
+              <div id="emp-msg"></div>
+              <button type="submit" class="btn btn-primary">💾 Agregar empresa</button>
+            </form>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Empresas</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Razón social</th>
+                    <th>Tipo</th>
+                    <th>CUIT</th>
+                    <th>ART</th>
+                    <th>Seguro</th>
+                    <th>Personal</th>
+                    <th>Vehículos</th>
+                    <th>Contrato</th>
+                  </tr>
+                </thead>
+                <tbody id="emp-tbody">
+                  <tr><td colspan="8" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: TRAZABILIDAD
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="trazabilidad">
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Historial de acciones (últimas 100)</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha y hora</th>
+                    <th>Usuario</th>
+                    <th>Acción</th>
+                    <th>Tipo</th>
+                  </tr>
+                </thead>
+                <tbody id="traza-tbody">
+                  <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
         <!-- /tabs -->
 
       </div><!-- /.admin-content -->
@@ -579,6 +982,7 @@
 <script src="/js/auth.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/app.js"></script>
+<script src="/js/operacion.js"></script>
 <script src="/js/dashboard.js"></script>
 
 <script>
@@ -599,11 +1003,17 @@
 
   // ---- Actualizar título del topbar cuando cambia de tab ----
   const tabTitles = {
-    overview:  'Vista General',
-    employees: 'Empleados',
-    records:   'Registros',
-    reports:   'Informes',
-    settings:  'Configuración'
+    overview:      'Vista General',
+    employees:     'Empleados',
+    records:       'Registros',
+    reports:       'Informes',
+    settings:      'Configuración',
+    operacion:     'Habilitaciones',
+    reemplazos:    'Reemplazos',
+    observaciones: 'Observaciones',
+    vehiculos:     'Vehículos',
+    empresas:      'Empresas',
+    trazabilidad:  'Trazabilidad'
   };
 
   document.querySelectorAll('[data-tab]').forEach(btn => {

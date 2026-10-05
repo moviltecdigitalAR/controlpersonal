@@ -102,9 +102,28 @@ const API = (() => {
   const obtenerReporte      = (adm, filtros)        => call('obtenerReporte',      { adminEmail: adm, filtros });
   const actualizarConfig    = (adm, config)         => call('actualizarConfig',    { adminEmail: adm, config });
 
+  // ---- Módulo Operación (ex-ShiftControl) ----
+  const obtenerOperacion     = (adm)                => call('obtenerOperacion',     { adminEmail: adm });
+  const obtenerTrazabilidad  = (adm)                => call('obtenerTrazabilidad',  { adminEmail: adm });
+  const agregarVehiculo      = (adm, vehiculo)      => call('agregarVehiculo',      { adminEmail: adm, vehiculo });
+  const actualizarVehiculo   = (adm, id, c, v)      => call('actualizarVehiculo',   { adminEmail: adm, id, campo: c, valor: v });
+  const agregarEmpresa       = (adm, empresa)       => call('agregarEmpresa',       { adminEmail: adm, empresa });
+  const actualizarEmpresa    = (adm, id, c, v)      => call('actualizarEmpresa',    { adminEmail: adm, id, campo: c, valor: v });
+  const agregarObservacion   = (adm, observacion)   => call('agregarObservacion',   { adminEmail: adm, observacion });
+  const resolverObservacion  = (adm, id)            => call('resolverObservacion',  { adminEmail: adm, id });
+  const marcarAlertasLeidas  = (adm)                => call('marcarAlertasLeidas',  { adminEmail: adm });
+  const registrarAusencia    = (adm, reemplazo)     => call('registrarAusencia',    { adminEmail: adm, reemplazo });
+  const asignarReemplazo     = (adm, id, nombre)    => call('asignarReemplazo',     { adminEmail: adm, id, candidatoNombre: nombre });
+  const descartarReemplazo   = (adm, id)            => call('descartarReemplazo',   { adminEmail: adm, id });
+
   return {
     verificarEmpleado, registrarMovimiento, obtenerEstado, getConfig,
     obtenerEmpleados, agregarEmpleado, actualizarEmpleado,
-    resetearDispositivo, obtenerReporte, actualizarConfig
+    resetearDispositivo, obtenerReporte, actualizarConfig,
+    obtenerOperacion, obtenerTrazabilidad,
+    agregarVehiculo, actualizarVehiculo,
+    agregarEmpresa, actualizarEmpresa,
+    agregarObservacion, resolverObservacion, marcarAlertasLeidas,
+    registrarAusencia, asignarReemplazo, descartarReemplazo
   };
 })();

@@ -2,7 +2,7 @@
 // Estrategia: NETWORK FIRST para todo (actualizaciones inmediatas),
 // con cache como fallback offline. Así los deploys nuevos llegan siempre.
 
-const CACHE_NAME = 'control-acceso-v3';
+const CACHE_NAME = 'control-acceso-v4';
 
 const STATIC_ASSETS = [
   '/',
@@ -14,6 +14,7 @@ const STATIC_ASSETS = [
   '/js/auth.js',
   '/js/api.js',
   '/js/app.js',
+  '/js/operacion.js',
   '/js/dashboard.js',
   '/manifest.json',
   '/icons/icon-192.png',

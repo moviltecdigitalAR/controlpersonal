@@ -406,6 +406,17 @@ input, select, textarea { font-family: inherit; font-size: 1rem; }
 }
 .btn-ghost:hover { background: rgba(255,255,255,.12); color: rgba(255,255,255,.85); }
 
+/* Separador de sección en el sidebar del admin */
+.nav-section-label {
+  margin: 1rem 1.5rem .4rem;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: rgba(255,255,255,.45);
+  border-top: 1px solid rgba(255,255,255,.12);
+  padding-top: .9rem;
+}
+
 /* Outline para fondos claros (panel admin) */
 .btn-outline {
   background: transparent;

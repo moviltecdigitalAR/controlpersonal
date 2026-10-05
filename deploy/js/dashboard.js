@@ -63,6 +63,7 @@ const Dashboard = (() => {
       _setLoading(false);
       _showSection('admin-dashboard');
       _setupTabs();
+      Operacion.init(_admin);   // Módulo Operación (ex-ShiftControl)
       _loadTab('overview');
 
     } catch (err) {
@@ -98,6 +99,15 @@ const Dashboard = (() => {
       case 'records':    _renderRegistros();  break;
       case 'reports':    _renderInformes();   break;
       case 'settings':   _renderConfig();     break;
+      // ---- Módulo Operación (ex-ShiftControl) ----
+      case 'operacion':
+      case 'reemplazos':
+      case 'observaciones':
+      case 'vehiculos':
+      case 'empresas':
+      case 'trazabilidad':
+        Operacion.render(tab);
+        break;
     }
   }
 
