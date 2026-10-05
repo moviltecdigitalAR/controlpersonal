@@ -102,6 +102,13 @@ const API = (() => {
   const obtenerReporte      = (adm, filtros)        => call('obtenerReporte',      { adminEmail: adm, filtros });
   const actualizarConfig    = (adm, config)         => call('actualizarConfig',    { adminEmail: adm, config });
 
+  // ---- Novedades diarias (V, LC, EC, EB, PM, D, AJ, AI) ----
+  const marcarNovedad   = (adm, email, fecha, fechaHasta, codigo, detalle) =>
+    call('marcarNovedad', { adminEmail: adm, email, fecha, fechaHasta, codigo, detalle });
+  const borrarNovedad   = (adm, email, fecha, fechaHasta) =>
+    call('borrarNovedad', { adminEmail: adm, email, fecha, fechaHasta });
+  const obtenerNovedades = (adm, filtros)           => call('obtenerNovedades',    { adminEmail: adm, ...filtros });
+
   // ---- Módulo Operación (ex-ShiftControl) ----
   const obtenerOperacion     = (adm)                => call('obtenerOperacion',     { adminEmail: adm });
   const obtenerTrazabilidad  = (adm)                => call('obtenerTrazabilidad',  { adminEmail: adm });
@@ -120,6 +127,7 @@ const API = (() => {
     verificarEmpleado, registrarMovimiento, obtenerEstado, getConfig,
     obtenerEmpleados, agregarEmpleado, actualizarEmpleado,
     resetearDispositivo, obtenerReporte, actualizarConfig,
+    marcarNovedad, borrarNovedad, obtenerNovedades,
     obtenerOperacion, obtenerTrazabilidad,
     agregarVehiculo, actualizarVehiculo,
     agregarEmpresa, actualizarEmpresa,

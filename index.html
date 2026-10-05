@@ -430,9 +430,14 @@
              ============================== -->
         <div class="tab-pane hidden" data-tab-pane="records">
 
-          <!-- Barra de control: mes + vista + búsqueda + export -->
+          <!-- Barra de control: mes + período + vista + búsqueda + export -->
           <div class="filters-bar">
             <input type="month" id="reg-mes" class="form-input" title="Mes a consultar" style="width:165px" />
+            <select id="reg-periodo" class="form-input" title="Período de cierre (UOCRA quincenal · AOMA/fuera de convenio mensual)" style="width:170px">
+              <option value="mes">Mes completo</option>
+              <option value="q1">1ª quincena (1-15)</option>
+              <option value="q2">2ª quincena (16-fin)</option>
+            </select>
             <div class="seg-toggle" id="reg-vista-toggle">
               <button type="button" data-vista="resumen" class="seg-btn seg-active">📊 Resumen</button>
               <button type="button" data-vista="calendario" class="seg-btn">🗓️ Calendario</button>
@@ -446,7 +451,7 @@
           <div id="reg-view-resumen">
             <div class="table-container">
               <div class="table-header">
-                <span class="table-title">Resumen mensual por empleado</span>
+                <span class="table-title">Resumen por empleado</span>
                 <span id="reg-count" class="text-small text-muted"></span>
               </div>
               <div style="overflow-x:auto">
@@ -455,21 +460,23 @@
                     <tr>
                       <th>Empleado</th>
                       <th>Empresa / Sector</th>
+                      <th>Convenio</th>
                       <th class="text-center">Días trab.</th>
                       <th class="text-center">Horas totales</th>
                       <th class="text-center">Prom. por día</th>
+                      <th class="text-center">Novedades</th>
                       <th class="text-center">Sin cierre</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody id="reg-res-tbody">
-                    <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted">Cargando...</td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
             <p class="text-small text-muted" style="margin-top:.5rem">
-              ℹ️ Haga clic en una fila para ver el detalle día por día. El conteo exacto de <strong>ausencias</strong> se calcula automáticamente cuando el cronograma (roster) esté cargado — mientras tanto, use la vista 🗓️ Calendario para ver los días sin registro.
+              ℹ️ Haga clic en una fila para ver el detalle día por día. <strong>P</strong> (presente) se genera solo con las fichadas; las novedades (V, LC, EC, EB, PM, D) se marcan desde la vista 🗓️ Calendario haciendo clic en el día.
             </p>
           </div>
 
@@ -488,7 +495,12 @@
               </div>
             </div>
             <p class="text-small text-muted" style="margin-top:.5rem">
-              🟩 día con asistencia (el número indica horas trabajadas) · ⬜ sin registro · columna sombreada = fin de semana
+              🟩 día con asistencia (número = horas) · <span class="nov-dot nov-D"></span>D descanso ·
+              <span class="nov-dot nov-V"></span>V vacaciones · <span class="nov-dot nov-LC"></span>LC licencia ·
+              <span class="nov-dot nov-EC"></span>EC extra campamento · <span class="nov-dot nov-EB"></span>EB extra base ·
+              <span class="nov-dot nov-PM"></span>PM parte médico · <span class="nov-dot nov-AJ"></span>AJ/AI ausencia ·
+              ⬜ sin registro · columna sombreada = fin de semana.
+              <strong>Haga clic en un día</strong> para marcar o editar una novedad.
             </p>
           </div>
 
@@ -1041,6 +1053,24 @@
             <div class="op-modal-footer">
               <button type="button" data-op="modalCancel" class="btn btn-outline">Cancelar</button>
               <button type="button" id="op-modal-save" class="btn btn-primary">💾 Guardar cambios</button>
+            </div>
+          </div>
+        </div>
+        <!-- ==============================
+             MODAL DE NOVEDAD (pestaña Asistencias)
+             ============================== -->
+        <div id="reg-modal-overlay" class="op-modal-overlay hidden">
+          <div class="op-modal" role="dialog" aria-modal="true">
+            <div class="op-modal-header">
+              <h3 id="reg-modal-title">Novedad</h3>
+              <button type="button" id="reg-modal-close" class="op-modal-close" aria-label="Cerrar">×</button>
+            </div>
+            <div class="op-modal-body" id="reg-modal-body"></div>
+            <div id="reg-modal-msg"></div>
+            <div class="op-modal-footer">
+              <button type="button" id="reg-modal-cancel" class="btn btn-outline">Cancelar</button>
+              <button type="button" id="reg-modal-delete" class="btn btn-danger hidden">🗑️ Quitar novedad</button>
+              <button type="button" id="reg-modal-save" class="btn btn-primary">💾 Guardar</button>
             </div>
           </div>
         </div>

@@ -57,6 +57,9 @@ function handleAction(data) {
     case 'resetearDispositivo':  return resetearDispositivo(data);
     case 'generarDatosDemo':     return generarDatosDemo(data);
     case 'borrarDatosDemo':      return borrarDatosDemo(data);
+    case 'marcarNovedad':        return marcarNovedad(data);
+    case 'borrarNovedad':        return borrarNovedad(data);
+    case 'obtenerNovedades':     return obtenerNovedades(data);
     case 'actualizarConfig':     return actualizarConfig(data);
     case 'getConfig':            return getConfig();
     // ---- Módulo Operación (ex-ShiftControl) ----
@@ -103,6 +106,7 @@ function rowToEmpleado(row) {
     sector:        row[3],
     turno:         row[4],
     dispositivoId: row[5],
+    tieneDispositivo: !!(row[5] && row[5] !== ''),
     activo:        row[6] === true || String(row[6]).toUpperCase() === 'TRUE',
     esAdmin:       row[7] === true || String(row[7]).toUpperCase() === 'TRUE',
     estado:        row[8] || 'Fuera',
@@ -115,7 +119,9 @@ function rowToEmpleado(row) {
     licenciaVenc:  fmtFechaCell(row[14]),
     artEstado:     row[15] || 'ok',
     habilitacion:  row[16] || 'habilitado',
-    obsGestion:    row[17] || ''
+    obsGestion:    row[17] || '',
+    // ---- Convenio (columna S) ----
+    convenio:      row[18] || ''
   };
 }
 
@@ -346,23 +352,14 @@ function esAdminFn(email) {
 function obtenerEmpleados(data) {
   if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos de administrador.' };
 
+  migrarEmpleadosColumnas();
   const sheet = getEmpleadosSheet();
   const rows  = sheet.getDataRange().getValues();
   const empleados = [];
 
   for (let i = 1; i < rows.length; i++) {
     if (!rows[i][0]) continue;
-    empleados.push({
-      email:           rows[i][0],
-      nombre:          rows[i][1],
-      apellido:        rows[i][2],
-      sector:          rows[i][3],
-      turno:           rows[i][4],
-      tieneDispositivo: !!(rows[i][5] && rows[i][5] !== ''),
-      activo:          rows[i][6] === true || String(rows[i][6]).toUpperCase() === 'TRUE',
-      esAdmin:         rows[i][7] === true || String(rows[i][7]).toUpperCase() === 'TRUE',
-      estado:          rows[i][8] || 'Fuera'
-    });
+    empleados.push(rowToEmpleado(rows[i]));
   }
   return { success: true, empleados };
 }
@@ -383,7 +380,8 @@ function agregarEmpleado(data) {
     // ---- Módulo Operación ----
     e.empresa || '', e.dni || '', e.telefono || '',
     e.aptoVenc || '', e.licenciaTipo || '', e.licenciaVenc || '',
-    'ok', 'habilitado', ''
+    'ok', 'habilitado', '',
+    e.convenio || ''
   ]);
   logTraza(`Empleado agregado — ${e.nombre} ${e.apellido} (${e.sector || 'sin sector'})`, data.adminEmail, 'verde');
   return { success: true, message: 'Empleado agregado correctamente.' };
@@ -399,7 +397,8 @@ function actualizarEmpleado(data) {
     nombre: 2, apellido: 3, sector: 4, turno: 5, activo: 7, esAdmin: 8,
     // ---- Módulo Operación ----
     empresa: 10, dni: 11, telefono: 12, aptoVenc: 13, licenciaTipo: 14,
-    licenciaVenc: 15, artEstado: 16, habilitacion: 17, obsGestion: 18
+    licenciaVenc: 15, artEstado: 16, habilitacion: 17, obsGestion: 18,
+    convenio: 19
   };
   const col = colMap[data.campo];
   if (!col) return { success: false, error: 'Campo no válido.' };
@@ -555,6 +554,111 @@ function borrarDatosDemo(data) {
 
   logTraza('Datos demo eliminados (' + delReg + ' fichadas, ' + delEmp + ' empleados)', data.adminEmail, 'amarillo');
   return { success: true, message: 'Eliminadas ' + delReg + ' fichadas y ' + delEmp + ' empleados demo.' };
+}
+
+// ============================================================
+// NOVEDADES DIARIAS — códigos de la planilla de la empresa
+// P (presente) es automático: lo generan las fichadas.
+// D=Descanso, V=Vacaciones, LC=Licencia, EC=Extra campamento,
+// EB=Extra base, PM=Parte médico, AJ=Ausente justificado,
+// AI=Ausente injustificado
+// ============================================================
+
+const NOVEDADES_CODIGOS = ['D', 'V', 'LC', 'EC', 'EB', 'PM', 'AJ', 'AI'];
+
+function marcarNovedad(data) {
+  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  const email = String(data.email || '').toLowerCase().trim();
+  const emp   = findEmpleado(email);
+  if (!emp) return { success: false, error: 'Empleado no encontrado.' };
+  if (NOVEDADES_CODIGOS.indexOf(data.codigo) === -1) {
+    return { success: false, error: 'Código no válido. Usar: ' + NOVEDADES_CODIGOS.join(', ') };
+  }
+
+  const desde = parseFechaSimple(data.fecha);
+  if (!desde || isNaN(desde.getTime())) return { success: false, error: 'Fecha inválida.' };
+  const hasta = data.fechaHasta ? parseFechaSimple(data.fechaHasta) : desde;
+  if (!hasta || isNaN(hasta.getTime()) || hasta < desde) return { success: false, error: 'Rango de fechas inválido.' };
+  if ((hasta - desde) / 86400000 > 62) return { success: false, error: 'El rango máximo es 62 días.' };
+
+  const sh   = getNovedadesSheet();
+  const rows = sh.getDataRange().getValues();
+  const idx  = {};   // 'email|fecha' -> nro de fila (1-based)
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][1]) idx[String(rows[i][1]).toLowerCase() + '|' + fmtFechaCell(rows[i][0])] = i + 1;
+  }
+
+  const ss  = getSpreadsheet();
+  const tz  = ss.getSpreadsheetTimeZone();
+  const ahora = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm');
+  let altas = 0, cambios = 0;
+
+  for (let d = new Date(desde.getTime()); d <= hasta; d.setDate(d.getDate() + 1)) {
+    const fecha = Utilities.formatDate(d, tz, 'dd/MM/yyyy');
+    const fila  = idx[email + '|' + fecha];
+    if (fila) {
+      sh.getRange(fila, 3, 1, 4).setValues([[data.codigo, data.detalle || '', data.adminEmail, ahora]]);
+      cambios++;
+    } else {
+      sh.appendRow([fecha, email, data.codigo, data.detalle || '', data.adminEmail, ahora]);
+      altas++;
+    }
+  }
+
+  const rango = hasta > desde
+    ? Utilities.formatDate(desde, tz, 'dd/MM/yyyy') + ' al ' + Utilities.formatDate(hasta, tz, 'dd/MM/yyyy')
+    : Utilities.formatDate(desde, tz, 'dd/MM/yyyy');
+  logTraza(`Novedad ${data.codigo} (${data.detalle || 'sin detalle'}) — ${emp.data[1]} ${emp.data[2]} · ${rango}`, data.adminEmail, 'amarillo');
+  return { success: true, message: `Novedad ${data.codigo} guardada (${altas} nuevas, ${cambios} actualizadas).` };
+}
+
+function borrarNovedad(data) {
+  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  const email = String(data.email || '').toLowerCase().trim();
+  const desde = parseFechaSimple(data.fecha);
+  if (!desde || isNaN(desde.getTime())) return { success: false, error: 'Fecha inválida.' };
+  const hasta = data.fechaHasta ? parseFechaSimple(data.fechaHasta) : desde;
+  if (!hasta || isNaN(hasta.getTime()) || hasta < desde) return { success: false, error: 'Rango de fechas inválido.' };
+
+  const dMin = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  const dMax = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+
+  const sh   = getNovedadesSheet();
+  const rows = sh.getDataRange().getValues();
+  let del = 0;
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][1] || '').toLowerCase() !== email) continue;
+    const f = parseFechaSimple(fmtFechaCell(rows[i][0]));
+    if (f >= dMin && f <= dMax) {
+      sh.deleteRow(i + 1);
+      del++;
+    }
+  }
+  return { success: true, message: del + ' novedad(es) eliminada(s).' };
+}
+
+function obtenerNovedades(data) {
+  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  const sh    = getNovedadesSheet();
+  const rows  = sh.getDataRange().getValues();
+  const desde = data.fechaDesde ? parseFechaSimple(data.fechaDesde) : null;
+  const hasta = data.fechaHasta ? parseFechaSimple(data.fechaHasta) : null;
+  const novedades = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    if (!rows[i][1]) continue;
+    const fecha = fmtFechaCell(rows[i][0]);
+    const f     = parseFechaSimple(fecha);
+    if (desde && f < desde) continue;
+    if (hasta && f > hasta) continue;
+    novedades.push({
+      fecha:   fecha,
+      email:   String(rows[i][1]),
+      codigo:  String(rows[i][2] || ''),
+      detalle: rows[i][3] || ''
+    });
+  }
+  return { success: true, novedades };
 }
 
 // ============================================================
@@ -858,11 +962,14 @@ function getReemplazosSheet() {
 function getTrazabilidadSheet() {
   return ensureSheet('Trazabilidad', ['Fecha', 'Hora', 'Usuario', 'Accion', 'Color']);
 }
+function getNovedadesSheet() {
+  return ensureSheet('Novedades', ['Fecha', 'Email', 'Codigo', 'Detalle', 'Registrado_Por', 'Registrado_El']);
+}
 
 // --- Extensión de la hoja Empleados con columnas J..R ---
 function migrarEmpleadosColumnas() {
   const sh = getEmpleadosSheet();
-  const nuevos = ['Empresa', 'DNI', 'Telefono', 'Apto_Venc', 'Licencia_Tipo', 'Licencia_Venc', 'ART_Estado', 'Habilitacion', 'Obs_Gestion'];
+  const nuevos = ['Empresa', 'DNI', 'Telefono', 'Apto_Venc', 'Licencia_Tipo', 'Licencia_Venc', 'ART_Estado', 'Habilitacion', 'Obs_Gestion', 'Convenio'];
   if (sh.getLastColumn() < 9 + nuevos.length) {
     for (let i = 0; i < nuevos.length; i++) {
       if (!sh.getRange(1, 10 + i).getValue()) sh.getRange(1, 10 + i).setValue(nuevos[i]);

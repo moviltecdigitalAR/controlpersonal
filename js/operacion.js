@@ -763,6 +763,8 @@ const Operacion = (() => {
       { key: 'dni',           label: 'DNI', value: e.dni || '' },
       { key: 'telefono',      label: 'Teléfono', value: e.telefono || '' },
       { key: 'empresa',       label: 'Empresa', type: 'select', value: e.empresa || '', options: [''].concat(empresas) },
+      { key: 'convenio',      label: 'Convenio (define cierre quincenal o mensual)', type: 'select', value: e.convenio || '',
+        options: ['', 'UOCRA 76/75', 'AOMA 673/04', 'Fuera de convenio'] },
       { key: 'aptoVenc',      label: 'Vencimiento apto médico', type: 'date', value: _toISO(e.aptoVenc) },
       { key: 'licenciaTipo',  label: 'Tipo de licencia', value: e.licenciaTipo || '' },
       { key: 'licenciaVenc',  label: 'Vencimiento licencia', type: 'date', value: _toISO(e.licenciaVenc) }

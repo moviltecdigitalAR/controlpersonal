@@ -269,9 +269,17 @@ const Dashboard = (() => {
 
   let _regVista   = 'resumen';
   let _regMes     = '';      // 'YYYY-MM'
+  let _regPeriodo = 'mes';   // 'mes' | 'q1' | 'q2' (cierre quincenal UOCRA / mensual AOMA-FC)
   let _regFilas   = [];      // resumen agregado por empleado del mes
+  let _regNovedades = {};    // email -> { 'dd/MM/yyyy': {codigo, detalle} }
   let _detalleRegs = [];     // registros de la vista detalle (con filtros propios)
   let _regBound   = false;
+
+  // Códigos de novedad de la planilla de la empresa (P = presente, automático por fichada)
+  const NOV_LABELS = {
+    D: 'Descanso', V: 'Vacaciones', LC: 'Licencia', EC: 'Extra campamento',
+    EB: 'Extra base', PM: 'Parte médico', AJ: 'Ausente justificado', AI: 'Ausente injustificado'
+  };
 
   async function _renderRegistros() {
     _bindRegistrosUI();
@@ -299,8 +307,26 @@ const Dashboard = (() => {
     });
 
     document.getElementById('reg-mes')?.addEventListener('change', _cargarMesRegistros);
+    document.getElementById('reg-periodo')?.addEventListener('change', _cargarMesRegistros);
     document.getElementById('reg-buscar')?.addEventListener('input', _renderVistaActiva);
     document.getElementById('btn-export-reg')?.addEventListener('click', _exportarRegistros);
+
+    // Clic en una celda del calendario → marcar/editar novedad
+    document.getElementById('reg-cal-tbody')?.addEventListener('click', (e) => {
+      const td = e.target.closest('td[data-email]');
+      if (!td) return;
+      _abrirNovedadModal(td.dataset.email, td.dataset.fecha);
+    });
+
+    // Modal de novedad
+    document.getElementById('reg-modal-close')?.addEventListener('click', _cerrarNovedadModal);
+    document.getElementById('reg-modal-cancel')?.addEventListener('click', _cerrarNovedadModal);
+    document.getElementById('reg-modal-overlay')?.addEventListener('click', (e) => {
+      if (e.target.id === 'reg-modal-overlay') _cerrarNovedadModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') _cerrarNovedadModal();
+    });
 
     // Filtros de la vista detalle
     ['reg-f-email','reg-f-sector','reg-f-desde','reg-f-hasta'].forEach(id => {
@@ -329,31 +355,45 @@ const Dashboard = (() => {
     else await _renderDetalleRegistros();
   }
 
-  // ---- carga del mes seleccionado ----
+  // ---- carga del mes/período seleccionado ----
   async function _cargarMesRegistros() {
     const mesInput = document.getElementById('reg-mes');
-    _regMes = mesInput?.value || '';
+    _regMes     = mesInput?.value || '';
+    _regPeriodo = document.getElementById('reg-periodo')?.value || 'mes';
     if (!_regMes) return;
 
     const [y, m]   = _regMes.split('-').map(Number);
     const ultimo   = new Date(y, m, 0).getDate();
-    const desde    = `01/${String(m).padStart(2,'0')}/${y}`;
-    const hasta    = `${String(ultimo).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+    const dIni     = _regPeriodo === 'q2' ? 16 : 1;
+    const dFin     = _regPeriodo === 'q1' ? 15 : ultimo;
+    const desde    = `${String(dIni).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+    const hasta    = `${String(dFin).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
 
     const tb = document.getElementById('reg-res-tbody');
-    if (tb) tb.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Cargando asistencias del mes...</td></tr>';
+    if (tb) tb.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Cargando asistencias del período...</td></tr>';
 
-    const result = await API.obtenerReporte(_admin.email, { fechaDesde: desde, fechaHasta: hasta });
-    if (!result.success) {
-      if (tb) tb.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${_esc(result.error || 'Error al cargar')}</td></tr>`;
+    const [repRes, novRes] = await Promise.all([
+      API.obtenerReporte(_admin.email, { fechaDesde: desde, fechaHasta: hasta }),
+      API.obtenerNovedades(_admin.email, { fechaDesde: desde, fechaHasta: hasta })
+    ]);
+    if (!repRes.success) {
+      if (tb) tb.innerHTML = `<tr><td colspan="9" class="text-center text-muted">${_esc(repRes.error || 'Error al cargar')}</td></tr>`;
       return;
     }
-    _regRegs = result.registros || [];
+
+    // Mapa de novedades: email -> { fecha: {codigo, detalle} }
+    _regNovedades = {};
+    ((novRes && novRes.success && novRes.novedades) || []).forEach(n => {
+      const em = String(n.email).toLowerCase();
+      (_regNovedades[em] = _regNovedades[em] || {})[n.fecha] = { codigo: n.codigo, detalle: n.detalle || '' };
+    });
+
+    _regRegs = repRes.registros || [];
     _regFilas = _agregarPorEmpleado(_regRegs);
     _renderVistaActiva();
   }
 
-  // ---- agregación: registros → una fila por empleado ----
+  // ---- agregación: registros + novedades → una fila por empleado ----
   function _agregarPorEmpleado(registros) {
     const mapa = {};
 
@@ -362,8 +402,10 @@ const Dashboard = (() => {
       mapa[e.email] = {
         email: e.email, nombre: e.nombre, apellido: e.apellido,
         dni: e.dni || '', empresa: e.empresa || '', sector: e.sector || '',
-        activo: e.activo,
-        diasMap: new Map(), totalMin: 0, sinCierre: 0
+        convenio: e.convenio || '', activo: e.activo,
+        diasMap: new Map(), totalMin: 0, sinCierre: 0,
+        novMap: _regNovedades[String(e.email).toLowerCase()] || {},
+        novCounts: {}
       };
     });
 
@@ -372,8 +414,10 @@ const Dashboard = (() => {
       if (!f) {
         f = mapa[r.email] = {
           email: r.email, nombre: r.nombre, apellido: r.apellido,
-          dni: '', empresa: '', sector: r.sector || '', activo: false,
-          diasMap: new Map(), totalMin: 0, sinCierre: 0
+          dni: '', empresa: '', sector: r.sector || '', convenio: '', activo: false,
+          diasMap: new Map(), totalMin: 0, sinCierre: 0,
+          novMap: _regNovedades[String(r.email).toLowerCase()] || {},
+          novCounts: {}
         };
       }
       const d = f.diasMap.get(r.fecha) || {
@@ -388,8 +432,17 @@ const Dashboard = (() => {
       f.diasMap.set(r.fecha, d);
     });
 
+    // Merge de novedades: conteos por código + código en el día correspondiente
+    Object.values(mapa).forEach(f => {
+      Object.entries(f.novMap).forEach(([fecha, n]) => {
+        f.novCounts[n.codigo] = (f.novCounts[n.codigo] || 0) + 1;
+        const d = f.diasMap.get(fecha);
+        if (d) d.nov = n.codigo;
+      });
+    });
+
     return Object.values(mapa)
-      .filter(f => f.activo || f.diasMap.size > 0)   // activos siempre; resto solo si fichó
+      .filter(f => f.activo || f.diasMap.size > 0 || Object.keys(f.novMap).length > 0)
       .sort((a, b) => (a.apellido + ' ' + a.nombre).localeCompare(b.apellido + ' ' + b.nombre, 'es'));
   }
 
@@ -410,7 +463,7 @@ const Dashboard = (() => {
     setText('reg-count', `${conDatos.length} con asistencia · ${filas.length} empleados en total`);
 
     if (!filas.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Sin resultados.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Sin resultados.</td></tr>';
       return;
     }
 
@@ -418,6 +471,10 @@ const Dashboard = (() => {
       const dias   = f.diasMap.size;
       const prom   = dias > 0 ? Math.round(f.totalMin / dias) : 0;
       const horas  = (f.totalMin / 60).toFixed(1).replace('.', ',');
+      const novBadges = Object.entries(f.novCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([c, n]) => `<span class="nov-badge nov-${_esc(c)}" title="${_esc(NOV_LABELS[c] || c)}">${_esc(c)}×${n}</span>`)
+        .join('');
       return `
       <tr data-idx="${idx}" style="cursor:pointer">
         <td>
@@ -427,15 +484,17 @@ const Dashboard = (() => {
         <td>${_esc(f.empresa) || _esc(f.sector) || '<span class="text-muted">—</span>'}
           ${f.empresa && f.sector ? `<div class="text-small text-muted">${_esc(f.sector)}</div>` : ''}
         </td>
+        <td class="text-small">${_esc(f.convenio) || '<span class="text-muted">—</span>'}</td>
         <td class="text-center"><strong>${dias || '—'}</strong></td>
         <td class="text-center">${dias ? _fmtDur(f.totalMin) : '—'}<div class="text-small text-muted">${dias ? horas + ' h' : ''}</div></td>
         <td class="text-center">${prom ? _fmtDur(prom) : '—'}</td>
+        <td class="text-center">${novBadges || '—'}</td>
         <td class="text-center">${f.sinCierre ? `<span class="badge badge-warning">${f.sinCierre}</span>` : '—'}</td>
         <td>${dias ? '<span class="text-muted">▾</span>' : ''}</td>
       </tr>
       ${dias ? `
       <tr class="reg-det-row hidden" id="reg-det-${idx}">
-        <td colspan="7" style="background:var(--gray-50);padding:.5rem 1rem .75rem 2rem">
+        <td colspan="9" style="background:var(--gray-50);padding:.5rem 1rem .75rem 2rem">
           <table style="width:100%;font-size:.82rem">
             <thead>
               <tr class="text-small text-muted">
@@ -444,6 +503,7 @@ const Dashboard = (() => {
                 <th style="text-align:left;padding:.25rem .5rem">Ingreso</th>
                 <th style="text-align:left;padding:.25rem .5rem">Egreso</th>
                 <th style="text-align:left;padding:.25rem .5rem">Duración</th>
+                <th style="text-align:left;padding:.25rem .5rem">Novedad</th>
                 <th style="text-align:left;padding:.25rem .5rem">Estado</th>
               </tr>
             </thead>
@@ -455,6 +515,7 @@ const Dashboard = (() => {
                   <td style="padding:.25rem .5rem">${_esc(d.ingreso) || '—'}</td>
                   <td style="padding:.25rem .5rem">${_esc(d.egreso) || '—'}</td>
                   <td style="padding:.25rem .5rem">${d.min ? _fmtDur(d.min) : '—'}</td>
+                  <td style="padding:.25rem .5rem">${d.nov ? `<span class="nov-badge nov-${_esc(d.nov)}" title="${_esc(NOV_LABELS[d.nov] || d.nov)}">${_esc(d.nov)}</span>` : '—'}</td>
                   <td style="padding:.25rem .5rem">${d.abierta ? '<span class="badge badge-warning">Abierta</span>' : '<span class="badge badge-success">OK</span>'}</td>
                 </tr>`).join('')}
             </tbody>
@@ -500,14 +561,22 @@ const Dashboard = (() => {
         const dd    = String(d).padStart(2, '0');
         const key   = `${dd}/${String(m).padStart(2, '0')}/${y}`;
         const day   = f.diasMap.get(key);
+        const nov   = f.novMap[key];
         const dow   = new Date(y, m - 1, d).getDay();
         const we    = (dow === 0 || dow === 6) ? ' cal-we' : '';
+        const click = ' cal-click';
+        const attrs = `data-email="${_esc(f.email)}" data-fecha="${key}"`;
         if (day) {
           const h = Math.round(day.min / 60 * 10) / 10;
-          row += `<td class="cal-cell cal-on${we}${day.abierta ? ' cal-open' : ''}"
-                     title="${_esc(key)} · Ingreso ${_esc(day.ingreso) || '—'} · Egreso ${_esc(day.egreso) || '—'}${day.abierta ? ' · SIN CIERRE' : ''}">${h || '·'}</td>`;
+          const novTxt = nov ? ` · ${NOV_LABELS[nov.codigo] || nov.codigo}${nov.detalle ? ' (' + nov.detalle + ')' : ''}` : '';
+          row += `<td class="cal-cell cal-on${click}${we}${day.abierta ? ' cal-open' : ''}" ${attrs}
+                     title="${_esc(key)} · Ingreso ${_esc(day.ingreso) || '—'} · Egreso ${_esc(day.egreso) || '—'}${day.abierta ? ' · SIN CIERRE' : ''}${novTxt} — clic para novedad">
+                     ${h || '·'}${nov ? `<div class="cal-nov nov-${_esc(nov.codigo)}" style="font-size:.58rem;line-height:1">${_esc(nov.codigo)}</div>` : ''}</td>`;
+        } else if (nov) {
+          row += `<td class="cal-cell cal-nov nov-${_esc(nov.codigo)}${click}${we}" ${attrs}
+                     title="${_esc(key)} · ${_esc(NOV_LABELS[nov.codigo] || nov.codigo)}${nov.detalle ? ' · ' + _esc(nov.detalle) : ''} — clic para editar">${_esc(nov.codigo)}</td>`;
         } else {
-          row += `<td class="cal-cell${we}"></td>`;
+          row += `<td class="cal-cell${click}${we}" ${attrs} title="${_esc(key)} — clic para marcar novedad"></td>`;
         }
       }
       row += `<td class="cal-tot">${f.totalMin ? (Math.round(f.totalMin / 60 * 10) / 10) : ''}</td></tr>`;
@@ -515,6 +584,84 @@ const Dashboard = (() => {
     }).join('');
 
     setText('reg-cal-legend', `${filas.filter(f => f.diasMap.size > 0).length} con asistencia · ${filas.length} empleados`);
+  }
+
+  // ---- modal de novedad (marcar / editar / quitar) ----
+  function _cerrarNovedadModal() {
+    document.getElementById('reg-modal-overlay')?.classList.add('hidden');
+  }
+
+  function _abrirNovedadModal(email, fecha) {
+    const ov      = document.getElementById('reg-modal-overlay');
+    const tt      = document.getElementById('reg-modal-title');
+    const bb      = document.getElementById('reg-modal-body');
+    const mm      = document.getElementById('reg-modal-msg');
+    const delBtn  = document.getElementById('reg-modal-delete');
+    if (!ov || !bb || !fecha) return;
+
+    const f   = _regFilas.find(x => x.email === email);
+    const nov = f && f.novMap ? f.novMap[fecha] : null;
+    const nombre = f ? `${f.apellido}, ${f.nombre}` : email;
+
+    tt.textContent = `Novedad — ${nombre} — ${fecha}`;
+    if (mm) mm.innerHTML = '';
+    delBtn?.classList.toggle('hidden', !nov);
+
+    const opciones = [''].concat(Object.keys(NOV_LABELS));
+    bb.innerHTML = `
+      <div class="form-group" style="margin-bottom:.85rem">
+        <label class="form-label">Novedad del día</label>
+        <select id="reg-nov-codigo" class="form-input">
+          ${opciones.map(c => `<option value="${_esc(c)}" ${nov && nov.codigo === c ? 'selected' : ''}>${c === '' ? '— Sin novedad —' : _esc(c + ' · ' + NOV_LABELS[c])}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:.85rem">
+        <label class="form-label">Detalle (opcional)</label>
+        <input type="text" id="reg-nov-detalle" class="form-input" value="${_esc(nov ? nov.detalle : '')}" placeholder="Ej: vacaciones período 2026, UNSJ día extra..." />
+      </div>
+      <p class="text-small text-muted">Se registra la novedad para el <strong>${_esc(fecha)}</strong>. Si el empleado fichó ese día, la fichada (P con horas) se mantiene; la novedad queda como referencia para liquidación.</p>`;
+
+    const _err = (txt) => { if (mm) mm.innerHTML = `<div class="form-msg error">${_esc(txt)}</div>`; };
+
+    // Guardar
+    const saveBtn = document.getElementById('reg-modal-save');
+    const freshSave = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(freshSave, saveBtn);
+    freshSave.addEventListener('click', async () => {
+      const codigo  = document.getElementById('reg-nov-codigo')?.value || '';
+      const detalle = document.getElementById('reg-nov-detalle')?.value.trim() || '';
+      if (!codigo) { _cerrarNovedadModal(); return; }
+      freshSave.disabled = true;
+      freshSave.textContent = 'Guardando...';
+      try {
+        const r = await API.marcarNovedad(_admin.email, email, fecha, '', codigo, detalle);
+        if (!r.success) throw new Error(r.error || 'Error al guardar');
+        _cerrarNovedadModal();
+        await _cargarMesRegistros();
+      } catch (err) {
+        _err(err.message || 'Error al guardar');
+        freshSave.disabled = false;
+        freshSave.textContent = '💾 Guardar';
+      }
+    });
+
+    // Quitar novedad existente
+    const freshDel = delBtn.cloneNode(true);
+    delBtn.parentNode.replaceChild(freshDel, delBtn);
+    freshDel.addEventListener('click', async () => {
+      freshDel.disabled = true;
+      try {
+        const r = await API.borrarNovedad(_admin.email, email, fecha);
+        if (!r.success) throw new Error(r.error || 'Error al eliminar');
+        _cerrarNovedadModal();
+        await _cargarMesRegistros();
+      } catch (err) {
+        _err(err.message || 'Error al eliminar');
+        freshDel.disabled = false;
+      }
+    });
+
+    ov.classList.remove('hidden');
   }
 
   // ---- vista DETALLE (lista completa con filtros propios) ----
@@ -569,16 +716,21 @@ const Dashboard = (() => {
     if (_regVista === 'detalle') { _exportCSV(_detalleRegs, 'asistencias_detalle'); return; }
     if (!_regFilas.length) { alert('Sin datos para exportar.'); return; }
 
-    const headers = ['DNI','Apellido','Nombre','Email','Empresa','Sector',
+    const novCodes = Object.keys(NOV_LABELS);
+    const headers = ['DNI','Apellido','Nombre','Email','Empresa','Sector','Convenio',
                      'Dias trabajados','Horas totales (h:mm)','Horas (decimal)',
-                     'Promedio por dia (h:mm)','Entradas sin cierre','Activo'];
+                     'Promedio por dia (h:mm)']
+                     .concat(novCodes.map(c => 'Novedad ' + c + ' (' + NOV_LABELS[c] + ')'))
+                     .concat(['Entradas sin cierre','Activo']);
     const rows = _filasFiltradas().map(f => [
-      f.dni, f.apellido, f.nombre, f.email, f.empresa, f.sector,
+      f.dni, f.apellido, f.nombre, f.email, f.empresa, f.sector, f.convenio,
       f.diasMap.size, _fmtDur(f.totalMin), (f.totalMin / 60).toFixed(2).replace('.', ','),
-      _fmtDur(f.diasMap.size ? Math.round(f.totalMin / f.diasMap.size) : 0),
-      f.sinCierre, f.activo ? 'SI' : 'NO'
-    ]);
-    _exportTablaCSV(headers, rows, 'resumen_asistencias_' + (_regMes || ''));
+      _fmtDur(f.diasMap.size ? Math.round(f.totalMin / f.diasMap.size) : 0)
+    ].concat(novCodes.map(c => f.novCounts[c] || 0))
+     .concat([f.sinCierre, f.activo ? 'SI' : 'NO']));
+    const sufijo = _regMes || '';
+    const periodo = _regPeriodo === 'q1' ? '_q1' : (_regPeriodo === 'q2' ? '_q2' : '');
+    _exportTablaCSV(headers, rows, 'resumen_asistencias_' + sufijo + periodo);
   }
 
   // ============================================================
