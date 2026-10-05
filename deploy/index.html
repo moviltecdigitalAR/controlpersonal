@@ -430,37 +430,98 @@
              ============================== -->
         <div class="tab-pane hidden" data-tab-pane="records">
 
+          <!-- Barra de control: mes + vista + búsqueda + export -->
           <div class="filters-bar">
-            <input type="email" id="reg-f-email" class="form-input" placeholder="Filtrar por email" style="flex:1;min-width:180px" />
-            <input type="text" id="reg-f-sector" class="form-input" placeholder="Sector" style="width:140px" />
-            <input type="date" id="reg-f-desde" class="form-input" title="Desde" />
-            <input type="date" id="reg-f-hasta" class="form-input" title="Hasta" />
-            <button id="btn-export-reg" class="btn btn-outline btn-sm">
-              ⬇️ Exportar CSV
-            </button>
+            <input type="month" id="reg-mes" class="form-input" title="Mes a consultar" style="width:165px" />
+            <div class="seg-toggle" id="reg-vista-toggle">
+              <button type="button" data-vista="resumen" class="seg-btn seg-active">📊 Resumen</button>
+              <button type="button" data-vista="calendario" class="seg-btn">🗓️ Calendario</button>
+              <button type="button" data-vista="detalle" class="seg-btn">📋 Detalle</button>
+            </div>
+            <input type="text" id="reg-buscar" class="form-input" placeholder="🔍 Buscar empleado..." style="flex:1;min-width:150px" />
+            <button id="btn-export-reg" class="btn btn-outline btn-sm">⬇️ Exportar CSV</button>
           </div>
 
-          <div class="table-container">
-            <div class="table-header">
-              <span class="table-title">Asistencias registradas (entrada y salida)</span>
-              <span id="reg-count" class="text-small text-muted"></span>
+          <!-- VISTA: RESUMEN MENSUAL (default) -->
+          <div id="reg-view-resumen">
+            <div class="table-container">
+              <div class="table-header">
+                <span class="table-title">Resumen mensual por empleado</span>
+                <span id="reg-count" class="text-small text-muted"></span>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Empleado</th>
+                      <th>Empresa / Sector</th>
+                      <th class="text-center">Días trab.</th>
+                      <th class="text-center">Horas totales</th>
+                      <th class="text-center">Prom. por día</th>
+                      <th class="text-center">Sin cierre</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="reg-res-tbody">
+                    <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div style="overflow-x:auto">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Empleado</th>
-                    <th>Ingreso</th>
-                    <th>Egreso</th>
-                    <th>Duración</th>
-                    <th>Día</th>
-                  </tr>
-                </thead>
-                <tbody id="reg-tbody">
-                  <tr><td colspan="6" class="text-center text-muted">Seleccione filtros y haga clic en Actualizar</td></tr>
-                </tbody>
-              </table>
+            <p class="text-small text-muted" style="margin-top:.5rem">
+              ℹ️ Haga clic en una fila para ver el detalle día por día. El conteo exacto de <strong>ausencias</strong> se calcula automáticamente cuando el cronograma (roster) esté cargado — mientras tanto, use la vista 🗓️ Calendario para ver los días sin registro.
+            </p>
+          </div>
+
+          <!-- VISTA: CALENDARIO -->
+          <div id="reg-view-calendario" class="hidden">
+            <div class="table-container">
+              <div class="table-header">
+                <span class="table-title">Calendario de asistencia del mes</span>
+                <span id="reg-cal-legend" class="text-small text-muted"></span>
+              </div>
+              <div style="overflow-x:auto">
+                <table class="cal-table" id="reg-cal-table">
+                  <thead id="reg-cal-thead"></thead>
+                  <tbody id="reg-cal-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+            <p class="text-small text-muted" style="margin-top:.5rem">
+              🟩 día con asistencia (el número indica horas trabajadas) · ⬜ sin registro · columna sombreada = fin de semana
+            </p>
+          </div>
+
+          <!-- VISTA: DETALLE (lista completa) -->
+          <div id="reg-view-detalle" class="hidden">
+            <div class="filters-bar" style="margin-bottom:1rem">
+              <input type="email" id="reg-f-email" class="form-input" placeholder="Filtrar por email" style="flex:1;min-width:180px" />
+              <input type="text" id="reg-f-sector" class="form-input" placeholder="Sector" style="width:140px" />
+              <input type="date" id="reg-f-desde" class="form-input" title="Desde" />
+              <input type="date" id="reg-f-hasta" class="form-input" title="Hasta" />
+            </div>
+
+            <div class="table-container">
+              <div class="table-header">
+                <span class="table-title">Asistencias registradas (entrada y salida)</span>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Empleado</th>
+                      <th>Ingreso</th>
+                      <th>Egreso</th>
+                      <th>Duración</th>
+                      <th>Día</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reg-tbody">
+                    <tr><td colspan="6" class="text-center text-muted">Sin datos</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>

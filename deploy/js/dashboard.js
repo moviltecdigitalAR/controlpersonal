@@ -264,45 +264,291 @@ const Dashboard = (() => {
   }
 
   // ============================================================
-  // REGISTROS
+  // REGISTROS / ASISTENCIAS (resumen mensual, calendario y detalle)
   // ============================================================
 
+  let _regVista   = 'resumen';
+  let _regMes     = '';      // 'YYYY-MM'
+  let _regFilas   = [];      // resumen agregado por empleado del mes
+  let _detalleRegs = [];     // registros de la vista detalle (con filtros propios)
+  let _regBound   = false;
+
   async function _renderRegistros() {
+    _bindRegistrosUI();
+
+    const mesInput = document.getElementById('reg-mes');
+    if (mesInput && !mesInput.value) {
+      const d = new Date();
+      mesInput.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+    await _cargarMesRegistros();
+  }
+
+  function _bindRegistrosUI() {
+    if (_regBound) return;
+    _regBound = true;
+
+    // Toggle de vista
+    document.getElementById('reg-vista-toggle')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-vista]');
+      if (!btn) return;
+      _regVista = btn.dataset.vista;
+      document.querySelectorAll('#reg-vista-toggle .seg-btn').forEach(b =>
+        b.classList.toggle('seg-active', b === btn));
+      _mostrarVistaRegistros();
+    });
+
+    document.getElementById('reg-mes')?.addEventListener('change', _cargarMesRegistros);
+    document.getElementById('reg-buscar')?.addEventListener('input', _renderVistaActiva);
+    document.getElementById('btn-export-reg')?.addEventListener('click', _exportarRegistros);
+
+    // Filtros de la vista detalle
+    ['reg-f-email','reg-f-sector','reg-f-desde','reg-f-hasta'].forEach(id => {
+      document.getElementById(id)?.addEventListener('change', _renderDetalleRegistros);
+    });
+
+    // Expandir/contraer detalle diario en el resumen
+    document.getElementById('reg-res-tbody')?.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-idx]');
+      if (!tr) return;
+      const det = document.getElementById('reg-det-' + tr.dataset.idx);
+      if (det) det.classList.toggle('hidden');
+    });
+  }
+
+  function _mostrarVistaRegistros() {
+    ['resumen','calendario','detalle'].forEach(v => {
+      document.getElementById('reg-view-' + v)?.classList.toggle('hidden', v !== _regVista);
+    });
+    _renderVistaActiva();
+  }
+
+  async function _renderVistaActiva() {
+    if (_regVista === 'resumen')       _renderResumenRegistros();
+    else if (_regVista === 'calendario') _renderCalendarioRegistros();
+    else await _renderDetalleRegistros();
+  }
+
+  // ---- carga del mes seleccionado ----
+  async function _cargarMesRegistros() {
+    const mesInput = document.getElementById('reg-mes');
+    _regMes = mesInput?.value || '';
+    if (!_regMes) return;
+
+    const [y, m]   = _regMes.split('-').map(Number);
+    const ultimo   = new Date(y, m, 0).getDate();
+    const desde    = `01/${String(m).padStart(2,'0')}/${y}`;
+    const hasta    = `${String(ultimo).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+
+    const tb = document.getElementById('reg-res-tbody');
+    if (tb) tb.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Cargando asistencias del mes...</td></tr>';
+
+    const result = await API.obtenerReporte(_admin.email, { fechaDesde: desde, fechaHasta: hasta });
+    if (!result.success) {
+      if (tb) tb.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${_esc(result.error || 'Error al cargar')}</td></tr>`;
+      return;
+    }
+    _regRegs = result.registros || [];
+    _regFilas = _agregarPorEmpleado(_regRegs);
+    _renderVistaActiva();
+  }
+
+  // ---- agregación: registros → una fila por empleado ----
+  function _agregarPorEmpleado(registros) {
+    const mapa = {};
+
+    // Base: todos los empleados activos (aparecen aunque no tengan fichadas)
+    _empleados.forEach(e => {
+      mapa[e.email] = {
+        email: e.email, nombre: e.nombre, apellido: e.apellido,
+        dni: e.dni || '', empresa: e.empresa || '', sector: e.sector || '',
+        activo: e.activo,
+        diasMap: new Map(), totalMin: 0, sinCierre: 0
+      };
+    });
+
+    (registros || []).forEach(r => {
+      let f = mapa[r.email];
+      if (!f) {
+        f = mapa[r.email] = {
+          email: r.email, nombre: r.nombre, apellido: r.apellido,
+          dni: '', empresa: '', sector: r.sector || '', activo: false,
+          diasMap: new Map(), totalMin: 0, sinCierre: 0
+        };
+      }
+      const d = f.diasMap.get(r.fecha) || {
+        fecha: r.fecha, diaSemana: r.diaSemana, ingreso: '', egreso: '',
+        min: 0, abierta: false
+      };
+      if (r.horaIngreso && (!d.ingreso || r.horaIngreso < d.ingreso)) d.ingreso = r.horaIngreso;
+      if (r.horaEgreso && r.horaEgreso > (d.egreso || ''))            d.egreso  = r.horaEgreso;
+      if (!r.horaEgreso) { d.abierta = true; f.sinCierre++; }
+      d.min += r.duracionMin || 0;
+      f.totalMin += r.duracionMin || 0;
+      f.diasMap.set(r.fecha, d);
+    });
+
+    return Object.values(mapa)
+      .filter(f => f.activo || f.diasMap.size > 0)   // activos siempre; resto solo si fichó
+      .sort((a, b) => (a.apellido + ' ' + a.nombre).localeCompare(b.apellido + ' ' + b.nombre, 'es'));
+  }
+
+  function _filasFiltradas() {
+    const q = (document.getElementById('reg-buscar')?.value || '').trim().toLowerCase();
+    if (!q) return _regFilas;
+    return _regFilas.filter(f =>
+      `${f.nombre} ${f.apellido} ${f.email} ${f.empresa} ${f.sector}`.toLowerCase().includes(q));
+  }
+
+  // ---- vista RESUMEN ----
+  function _renderResumenRegistros() {
+    const tbody = document.getElementById('reg-res-tbody');
+    if (!tbody) return;
+
+    const filas    = _filasFiltradas();
+    const conDatos = filas.filter(f => f.diasMap.size > 0);
+    setText('reg-count', `${conDatos.length} con asistencia · ${filas.length} empleados en total`);
+
+    if (!filas.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Sin resultados.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filas.map((f, idx) => {
+      const dias   = f.diasMap.size;
+      const prom   = dias > 0 ? Math.round(f.totalMin / dias) : 0;
+      const horas  = (f.totalMin / 60).toFixed(1).replace('.', ',');
+      return `
+      <tr data-idx="${idx}" style="cursor:pointer">
+        <td>
+          <div class="emp-name">${_esc(f.apellido)}, ${_esc(f.nombre)}</div>
+          <div class="text-small text-muted">${f.dni ? 'DNI ' + _esc(f.dni) : _esc(f.email)}</div>
+        </td>
+        <td>${_esc(f.empresa) || _esc(f.sector) || '<span class="text-muted">—</span>'}
+          ${f.empresa && f.sector ? `<div class="text-small text-muted">${_esc(f.sector)}</div>` : ''}
+        </td>
+        <td class="text-center"><strong>${dias || '—'}</strong></td>
+        <td class="text-center">${dias ? _fmtDur(f.totalMin) : '—'}<div class="text-small text-muted">${dias ? horas + ' h' : ''}</div></td>
+        <td class="text-center">${prom ? _fmtDur(prom) : '—'}</td>
+        <td class="text-center">${f.sinCierre ? `<span class="badge badge-warning">${f.sinCierre}</span>` : '—'}</td>
+        <td>${dias ? '<span class="text-muted">▾</span>' : ''}</td>
+      </tr>
+      ${dias ? `
+      <tr class="reg-det-row hidden" id="reg-det-${idx}">
+        <td colspan="7" style="background:var(--gray-50);padding:.5rem 1rem .75rem 2rem">
+          <table style="width:100%;font-size:.82rem">
+            <thead>
+              <tr class="text-small text-muted">
+                <th style="text-align:left;padding:.25rem .5rem">Fecha</th>
+                <th style="text-align:left;padding:.25rem .5rem">Día</th>
+                <th style="text-align:left;padding:.25rem .5rem">Ingreso</th>
+                <th style="text-align:left;padding:.25rem .5rem">Egreso</th>
+                <th style="text-align:left;padding:.25rem .5rem">Duración</th>
+                <th style="text-align:left;padding:.25rem .5rem">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${[...f.diasMap.values()].map(d => `
+                <tr>
+                  <td style="padding:.25rem .5rem">${_esc(d.fecha)}</td>
+                  <td style="padding:.25rem .5rem">${_esc(d.diaSemana || '')}</td>
+                  <td style="padding:.25rem .5rem">${_esc(d.ingreso) || '—'}</td>
+                  <td style="padding:.25rem .5rem">${_esc(d.egreso) || '—'}</td>
+                  <td style="padding:.25rem .5rem">${d.min ? _fmtDur(d.min) : '—'}</td>
+                  <td style="padding:.25rem .5rem">${d.abierta ? '<span class="badge badge-warning">Abierta</span>' : '<span class="badge badge-success">OK</span>'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </td>
+      </tr>` : ''}`;
+    }).join('');
+  }
+
+  // ---- vista CALENDARIO (grilla empleado × días, tipo cronograma) ----
+  function _renderCalendarioRegistros() {
+    const thead = document.getElementById('reg-cal-thead');
+    const tbody = document.getElementById('reg-cal-tbody');
+    if (!thead || !tbody || !_regMes) return;
+
+    const [y, m]  = _regMes.split('-').map(Number);
+    const dias    = new Date(y, m, 0).getDate();
+    const filas   = _filasFiltradas();
+    const nombres = ['D','L','M','M','J','V','S'];
+
+    // Encabezado: empleado + días del mes
+    let head = '<tr><th style="position:sticky;left:0;background:#fff;z-index:2;min-width:180px">Empleado</th>';
+    for (let d = 1; d <= dias; d++) {
+      const dow = new Date(y, m - 1, d).getDay();
+      const we  = (dow === 0 || dow === 6) ? ' cal-we' : '';
+      head += `<th class="cal-day-head${we}">${d}<div class="text-small text-muted" style="font-weight:400">${nombres[dow]}</div></th>`;
+    }
+    head += '<th class="cal-tot-head">Σ h</th></tr>';
+    thead.innerHTML = head;
+
+    if (!filas.length) {
+      tbody.innerHTML = `<tr><td class="text-center text-muted" colspan="${dias + 2}">Sin resultados.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filas.map(f => {
+      let row = `
+        <tr>
+          <td style="position:sticky;left:0;background:#fff;z-index:1">
+            <div class="emp-name" style="font-size:.82rem">${_esc(f.apellido)}, ${_esc(f.nombre)}</div>
+          </td>`;
+      for (let d = 1; d <= dias; d++) {
+        const dd    = String(d).padStart(2, '0');
+        const key   = `${dd}/${String(m).padStart(2, '0')}/${y}`;
+        const day   = f.diasMap.get(key);
+        const dow   = new Date(y, m - 1, d).getDay();
+        const we    = (dow === 0 || dow === 6) ? ' cal-we' : '';
+        if (day) {
+          const h = Math.round(day.min / 60 * 10) / 10;
+          row += `<td class="cal-cell cal-on${we}${day.abierta ? ' cal-open' : ''}"
+                     title="${_esc(key)} · Ingreso ${_esc(day.ingreso) || '—'} · Egreso ${_esc(day.egreso) || '—'}${day.abierta ? ' · SIN CIERRE' : ''}">${h || '·'}</td>`;
+        } else {
+          row += `<td class="cal-cell${we}"></td>`;
+        }
+      }
+      row += `<td class="cal-tot">${f.totalMin ? (Math.round(f.totalMin / 60 * 10) / 10) : ''}</td></tr>`;
+      return row;
+    }).join('');
+
+    setText('reg-cal-legend', `${filas.filter(f => f.diasMap.size > 0).length} con asistencia · ${filas.length} empleados`);
+  }
+
+  // ---- vista DETALLE (lista completa con filtros propios) ----
+  async function _renderDetalleRegistros() {
+    const desdeEl = document.getElementById('reg-f-desde');
+    const hastaEl = document.getElementById('reg-f-hasta');
+    // Prefill del mes seleccionado la primera vez
+    if (_regMes && desdeEl && !desdeEl.value) {
+      const [y, m] = _regMes.split('-');
+      desdeEl.value = `${y}-${m}-01`;
+      hastaEl.value = `${y}-${m}-${String(new Date(Number(y), Number(m), 0).getDate()).padStart(2, '0')}`;
+    }
+
     const filtros = _getRegistrosFiltros();
     const result  = await API.obtenerReporte(_admin.email, filtros);
-    if (result.success) _registros = result.registros;
+    _detalleRegs  = result.success ? (result.registros || []) : [];
 
     const tbody = document.getElementById('reg-tbody');
     if (!tbody) return;
 
-    tbody.innerHTML = _registros.length === 0
+    tbody.innerHTML = _detalleRegs.length === 0
       ? '<tr><td colspan="6" class="text-center text-muted">Sin registros para los filtros seleccionados</td></tr>'
-      : _registros.map(r => `
+      : _detalleRegs.map(r => `
           <tr>
-            <td>${r.fecha}</td>
+            <td>${_esc(r.fecha)}</td>
             <td>
-              <div class="emp-name">${r.nombre} ${r.apellido}</div>
-              <div class="text-small text-muted">${r.sector || ''} ${r.turno ? '· ' + r.turno : ''}</div>
+              <div class="emp-name">${_esc(r.nombre)} ${_esc(r.apellido)}</div>
+              <div class="text-small text-muted">${_esc(r.sector || '')} ${r.turno ? '· ' + _esc(r.turno) : ''}</div>
             </td>
-            <td>${r.horaIngreso || '—'}</td>
-            <td>${r.horaEgreso  || '<span class="text-warning">Pendiente</span>'}</td>
+            <td>${_esc(r.horaIngreso) || '—'}</td>
+            <td>${_esc(r.horaEgreso)  || '<span class="text-warning">Pendiente</span>'}</td>
             <td>${r.duracionMin ? _fmtDur(r.duracionMin) : '—'}</td>
-            <td>${r.diaSemana || '—'}</td>
+            <td>${_esc(r.diaSemana) || '—'}</td>
           </tr>`).join('');
-
-    setText('reg-count', `${_registros.length} registros`);
-
-    // Bind filtros
-    ['reg-f-email','reg-f-sector','reg-f-desde','reg-f-hasta'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el && !el._bound) { el._bound = true; el.addEventListener('change', _renderRegistros); }
-    });
-    // Botón exportar
-    const btnExp = document.getElementById('btn-export-reg');
-    if (btnExp && !btnExp._bound) {
-      btnExp._bound = true;
-      btnExp.addEventListener('click', () => _exportCSV(_registros, 'registros'));
-    }
   }
 
   function _getRegistrosFiltros() {
@@ -316,6 +562,23 @@ const Dashboard = (() => {
     if (desde  && desde.value)  f.fechaDesde = _isoToDDMMYYYY(desde.value);
     if (hasta  && hasta.value)  f.fechaHasta = _isoToDDMMYYYY(hasta.value);
     return f;
+  }
+
+  // ---- exportación (resumen o detalle según la vista activa) ----
+  function _exportarRegistros() {
+    if (_regVista === 'detalle') { _exportCSV(_detalleRegs, 'asistencias_detalle'); return; }
+    if (!_regFilas.length) { alert('Sin datos para exportar.'); return; }
+
+    const headers = ['DNI','Apellido','Nombre','Email','Empresa','Sector',
+                     'Dias trabajados','Horas totales (h:mm)','Horas (decimal)',
+                     'Promedio por dia (h:mm)','Entradas sin cierre','Activo'];
+    const rows = _filasFiltradas().map(f => [
+      f.dni, f.apellido, f.nombre, f.email, f.empresa, f.sector,
+      f.diasMap.size, _fmtDur(f.totalMin), (f.totalMin / 60).toFixed(2).replace('.', ','),
+      _fmtDur(f.diasMap.size ? Math.round(f.totalMin / f.diasMap.size) : 0),
+      f.sinCierre, f.activo ? 'SI' : 'NO'
+    ]);
+    _exportTablaCSV(headers, rows, 'resumen_asistencias_' + (_regMes || ''));
   }
 
   // ============================================================
@@ -415,7 +678,10 @@ const Dashboard = (() => {
   }
 
   function verDetalleEmpleado(email) {
-    // Filtrar y mostrar registros del empleado en la pestaña de registros
+    // Cambiar a la pestaña Asistencias, vista Detalle, filtrado por empleado
+    _regVista = 'detalle';
+    document.querySelectorAll('#reg-vista-toggle .seg-btn').forEach(b =>
+      b.classList.toggle('seg-active', b.dataset.vista === 'detalle'));
     document.getElementById('reg-f-email').value = email;
     _loadTab('records');
   }
@@ -485,17 +751,27 @@ const Dashboard = (() => {
       r.sector, r.turno, r.horaIngreso, r.horaEgreso,
       r.duracionMin, _fmtDur(r.duracionMin)
     ]);
+    _exportTablaCSV(headers, rows, nombre);
+  }
 
-    const csv     = [headers, ...rows].map(r => r.map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob    = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url     = URL.createObjectURL(blob);
-    const a       = document.createElement('a');
-    a.href        = url;
-    a.download    = `${nombre}_${_fmtFecha(new Date()).replace(/\//g,'-')}.csv`;
+  function _exportTablaCSV(headers, rows, nombre) {
+    if (!rows || rows.length === 0) { alert('Sin datos para exportar.'); return; }
+    const csv  = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `${nombre}_${_fmtFecha(new Date()).replace(/\//g,'-')}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  function _esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   // ============================================================

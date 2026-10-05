@@ -417,6 +417,77 @@ input, select, textarea { font-family: inherit; font-size: 1rem; }
   padding-top: .9rem;
 }
 
+/* Toggle segmentado (vistas de Asistencias) */
+.seg-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+.seg-btn {
+  border: none;
+  background: transparent;
+  padding: .45rem .9rem;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--gray-500, #64748B);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.seg-btn:hover { background: var(--gray-50); }
+.seg-btn.seg-active {
+  background: var(--primary, #4F46E5);
+  color: #fff;
+}
+
+/* Calendario de asistencias (grilla empleado × días) */
+.cal-table { border-collapse: collapse; }
+.cal-table th,
+.cal-table td { border: 1px solid var(--border); }
+.cal-day-head {
+  min-width: 34px;
+  text-align: center;
+  font-size: .72rem;
+  padding: .3rem .15rem;
+  background: #fff;
+}
+.cal-tot-head {
+  min-width: 48px;
+  text-align: center;
+  font-size: .72rem;
+  padding: .3rem .3rem;
+  background: #fff;
+}
+.cal-cell {
+  text-align: center;
+  font-size: .72rem;
+  font-weight: 600;
+  padding: .38rem .15rem;
+  color: var(--gray-300, #CBD5E1);
+}
+.cal-we { background: var(--gray-50); }
+.cal-on {
+  background: #DCFCE7;
+  color: #15803D;
+}
+.cal-open {
+  background: #FEF3C7;
+  color: #B45309;
+}
+.cal-tot {
+  text-align: center;
+  font-size: .78rem;
+  font-weight: 700;
+  padding: .38rem .3rem;
+  background: #fff;
+  color: var(--gray-900);
+}
+
+/* Fila expandible de detalle diario */
+.reg-det-row > td { border-top: none; }
+
 /* Modal de edición (módulo Operación) */
 .op-modal-overlay {
   position: fixed;
