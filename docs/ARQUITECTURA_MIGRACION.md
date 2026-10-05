@@ -25,6 +25,8 @@ Requisitos tal como los definió la empresa (2026-10-04):
 
 **Fuera de alcance (v2):** cálculo de horas extra/nocturnas, licencias, capacitaciones, evaluaciones, BI. Quedan documentadas como fase futura si la empresa las pide. Esta reducción elimina ~40 % de la complejidad y el grueso del riesgo legal de cálculo.
 
+> **Nota (2026-10-05):** los módulos del antiguo ShiftControl (habilitaciones de personal, reemplazos, observaciones, alertas, vehículos, empresas y trazabilidad) fueron **integrados al sistema actual** (Sheets + Apps Script) como "Módulo Operación". En la migración D1 cada uno se convierte en tabla propia (`habilitaciones`, `reemplazos`, `observaciones`, `alertas`, `vehiculos`, `empresas`; la trazabilidad se unifica con `audit_log`). El bloqueo por habilitación ya opera server-side en el flujo de fichada actual.
+
 ---
 
 ## PARTE 2 — CORRECCIONES INTEGRADAS DE LA REVISIÓN MULTI-MODELO
