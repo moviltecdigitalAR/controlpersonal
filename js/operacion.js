@@ -9,6 +9,11 @@ const Operacion = (() => {
   let _admin   = null;   // { email }
   let _data    = null;   // respuesta de obtenerOperacion
   let _ready   = false;  // listeners de forms instalados
+  let _lastFetch    = 0;      // ts de la última carga de obtenerOperacion
+  let _lastTraza    = 0;      // ts de la última carga de trazabilidad
+  let _trazaCache   = null;   // respuesta cacheada de trazabilidad
+  let _fetching     = null;   // promise en curso (evita fetchs duplicados)
+  const CACHE_TTL   = 45000;  // 45s: vida útil de la caché antes de refrescar en background
 
   // ---------- utilidades ----------
   const _esc = (s) => String(s == null ? '' : s)
@@ -41,12 +46,20 @@ const Operacion = (() => {
   };
 
   // ---------- carga de datos ----------
+  // Caché con TTL: los cambios de panel usan lo ya cargado (instantáneo)
+  // y solo se pega al backend si la data está vencida. Las mutaciones
+  // (agregar/editar vehículo, etc.) siempre llaman load(true) y refrescan.
   async function load(force) {
-    if (_data && !force) return _data;
-    const r = await API.obtenerOperacion(_admin.email);
-    if (!r.success) throw new Error(r.error || 'No se pudo cargar el módulo Operación.');
-    _data = r;
-    return _data;
+    if (!force && _data && (Date.now() - _lastFetch < CACHE_TTL)) return _data;
+    if (_fetching) return _fetching;
+    _fetching = (async () => {
+      const r = await API.obtenerOperacion(_admin.email);
+      if (!r.success) throw new Error(r.error || 'No se pudo cargar el módulo Operación.');
+      _data = r;
+      _lastFetch = Date.now();
+      return _data;
+    })();
+    try { return await _fetching; } finally { _fetching = null; }
   }
 
   // ============================================================
@@ -132,16 +145,31 @@ const Operacion = (() => {
   // ============================================================
   // RENDER DISPATCH
   // ============================================================
+  function _renderTab(tab) {
+    if (tab === 'operacion')     _renderHabilitaciones();
+    if (tab === 'reemplazos')    _renderReemplazos();
+    if (tab === 'observaciones') _renderObservaciones();
+    if (tab === 'vehiculos')     _renderVehiculos();
+    if (tab === 'empresas')      _renderEmpresas();
+  }
+
   async function render(tab) {
     if (!_admin) return;
     try {
       if (tab === 'trazabilidad') return await _renderTrazabilidad();
-      await load(true);
-      if (tab === 'operacion')     _renderHabilitaciones();
-      if (tab === 'reemplazos')    _renderReemplazos();
-      if (tab === 'observaciones') _renderObservaciones();
-      if (tab === 'vehiculos')     _renderVehiculos();
-      if (tab === 'empresas')      _renderEmpresas();
+
+      if (_data) {
+        // 1) Render inmediato con la caché (cambio de panel sin espera)
+        _renderTab(tab);
+        // 2) Si la caché está vencida, refrescar en background y re-renderizar
+        if (Date.now() - _lastFetch >= CACHE_TTL && !_fetching) {
+          load().then(() => _renderTab(tab)).catch(() => {});
+        }
+      } else {
+        // Primera vez: no hay caché, mostrar "Cargando..." y esperar
+        await load();
+        _renderTab(tab);
+      }
     } catch (err) {
       console.error('[Operacion]', err);
       ['op-stats','hab-tbody','rem-lista','obs-tbody','alrt-lista','veh-tbody','empr-tbody','traza-tbody'].forEach(id => {
@@ -606,15 +634,34 @@ const Operacion = (() => {
   async function _renderTrazabilidad() {
     const tbody = document.getElementById('traza-tbody');
     if (!tbody) return;
-    const r = await API.obtenerTrazabilidad(_admin.email);
-    if (!r.success) throw new Error(r.error || 'No se pudo cargar la trazabilidad.');
-    const traza = r.traza || [];
 
+    const fetchTraza = async () => {
+      const r = await API.obtenerTrazabilidad(_admin.email);
+      if (!r.success) throw new Error(r.error || 'No se pudo cargar la trazabilidad.');
+      _trazaCache = r;
+      _lastTraza  = Date.now();
+      return r;
+    };
+
+    let r;
+    if (_trazaCache && (Date.now() - _lastTraza < CACHE_TTL)) {
+      r = _trazaCache;   // caché fresca: render inmediato
+    } else if (_trazaCache) {
+      r = _trazaCache;   // render con caché y refresco en background
+      fetchTraza().then(fresh => { _trazaCache = fresh; _renderTrazaTabla(fresh.traza || []); }).catch(() => {});
+    } else {
+      r = await fetchTraza();   // primera vez
+    }
+    _renderTrazaTabla(r.traza || []);
+  }
+
+  function _renderTrazaTabla(traza) {
+    const tbody = document.getElementById('traza-tbody');
+    if (!tbody) return;
     if (!traza.length) {
       tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Sin movimientos registrados.</td></tr>';
       return;
     }
-
     const colorBadge = {
       verde:    '<span class="badge badge-success">alta</span>',
       rojo:     '<span class="badge badge-danger">crítico</span>',
