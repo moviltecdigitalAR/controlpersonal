@@ -55,6 +55,8 @@ function handleAction(data) {
     case 'agregarEmpleado':      return agregarEmpleado(data);
     case 'actualizarEmpleado':   return actualizarEmpleado(data);
     case 'resetearDispositivo':  return resetearDispositivo(data);
+    case 'generarDatosDemo':     return generarDatosDemo(data);
+    case 'borrarDatosDemo':      return borrarDatosDemo(data);
     case 'actualizarConfig':     return actualizarConfig(data);
     case 'getConfig':            return getConfig();
     // ---- Módulo Operación (ex-ShiftControl) ----
@@ -419,6 +421,140 @@ function resetearDispositivo(data) {
   getEmpleadosSheet().getRange(emp.rowIndex, 6).setValue('');
   logTraza(`Dispositivo reseteado — ${emp.data[1]} ${emp.data[2]}`, data.adminEmail, 'amarillo');
   return { success: true, message: 'Dispositivo desvinculado. El empleado podrá vincular uno nuevo en su próximo acceso.' };
+}
+
+// ============================================================
+// DATOS DEMO — empleados y fichadas de ejemplo para probar
+// las vistas Resumen / Calendario / Detalle de Asistencias.
+// Se crean con el MISMO formato que las fichadas reales.
+// ============================================================
+
+const DEMO_EMAILS = ['demo.perez@demo.com', 'demo.gomez@demo.com'];
+
+function generarDatosDemo(data) {
+  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+
+  // Idempotencia: si ya hay registros demo, no duplicar
+  const regSheet = getRegistrosSheet();
+  const existentes = regSheet.getDataRange().getValues();
+  for (let i = 1; i < existentes.length; i++) {
+    if (DEMO_EMAILS.indexOf(String(existentes[i][1]).toLowerCase()) !== -1) {
+      return { success: false, error: 'Los datos demo ya existen. Ejecutá "borrarDatosDemo" primero si querés regenerarlos.' };
+    }
+  }
+
+  const emps = [
+    { email: 'demo.perez@demo.com', nombre: 'Carlos', apellido: 'Pérez',
+      sector: 'Perforación', turno: '12h (L-V)', dni: '30111222',
+      empresa: 'Logistica San Juan', aptoVenc: '15/11/2026' },
+    { email: 'demo.gomez@demo.com', nombre: 'María', apellido: 'Gómez',
+      sector: 'Planta', turno: '10h (14x14)', dni: '30222333',
+      empresa: 'Logistica San Juan', aptoVenc: '20/12/2026' }
+  ];
+
+  // Fichadas: [mes, día, horaIngreso, horaEgreso | null (sin cierre)]
+  // Pérez: L-V 12h con ausencias, un sábado corto y un viernes sin cierre.
+  const perez = [
+    [9,  1, '05:58:00', '18:05:00'], [9,  2, '06:12:00', '18:20:00'],
+    [9,  3, '05:55:00', '17:50:00'], [9,  4, '06:05:00', '18:10:00'],
+    // 5-6 finde ausente, 7 lunes ausente
+    [9,  8, '06:02:00', '18:00:00'], [9,  9, '06:18:00', '18:25:00'],
+    [9, 10, '05:52:00', '17:48:00'], [9, 11, '06:08:00', '18:15:00'],
+    [9, 12, '07:00:00', '13:00:00'],  // sábado, media jornada 6h
+    [9, 14, '05:57:00', '18:02:00'], [9, 15, '06:11:00', '18:18:00'],
+    [9, 16, '06:00:00', '18:05:00'], [9, 17, '05:49:00', '17:55:00'],
+    [9, 18, '06:15:00', '18:22:00'],
+    // 21 lunes ausente
+    [9, 22, '06:03:00', '18:08:00'], [9, 23, '05:56:00', '18:00:00'],
+    [9, 24, '06:10:00', '18:16:00'],
+    [9, 25, '06:07:00', null],        // viernes SIN CIERRE
+    [9, 28, '05:59:00', '18:03:00'], [9, 29, '06:13:00', '18:19:00'],
+    [9, 30, '06:01:00', '18:06:00'],
+    [10, 1, '06:04:00', '18:09:00'], [10, 2, '05:58:00', '18:00:00'],
+    [10, 5, '06:00:00', '14:30:00']  // jornada corta 8h30
+  ];
+  // Gómez: ciclo 14x14 (14 días corridos incl. fines de semana, 14 de franco).
+  const gomez = [
+    [9,  1, '06:55:00', '17:05:00'], [9,  2, '07:10:00', '17:20:00'],
+    [9,  3, '06:48:00', '16:58:00'], [9,  4, '07:02:00', '17:12:00'],
+    [9,  5, '06:58:00', '17:03:00'], [9,  6, '07:00:00', '12:05:00'],  // domingo corto 5h
+    [9,  7, '07:15:00', '17:25:00'], [9,  8, '06:52:00', '17:00:00'],
+    [9,  9, '07:05:00', '17:15:00'], [9, 10, '06:59:00', '17:08:00'],
+    [9, 11, '07:12:00', '17:22:00'], [9, 12, '06:50:00', '17:00:00'],
+    [9, 13, '07:03:00', '17:13:00'], [9, 14, '07:08:00', '17:18:00'],
+    // 15-28 franco (14x14)
+    [9, 29, '06:57:00', '17:07:00'], [9, 30, '07:11:00', '17:21:00'],
+    [10, 1, '07:00:00', '17:10:00'], [10, 2, '06:54:00', '17:04:00'],
+    [10, 3, '06:52:00', '17:02:00'], [10, 4, '07:06:00', '17:16:00'],
+    [10, 5, '06:58:00', '17:08:00']
+  ];
+
+  // 1) Crear empleados demo (si no existen)
+  emps.forEach(e => {
+    if (findEmpleado(e.email)) return;
+    getEmpleadosSheet().appendRow([
+      e.email.toLowerCase().trim(),
+      e.nombre, e.apellido, e.sector, e.turno,
+      '', true, false, 'Fuera',
+      e.empresa, e.dni, '', e.aptoVenc, '', '', 'ok', 'habilitado', ''
+    ]);
+  });
+
+  // 2) Escribir fichadas en bloque (mismo formato que registrarMovimiento)
+  const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const startRow = regSheet.getLastRow() + 1;
+  const values = [];
+  let n = startRow;
+
+  const escribir = (emp, regs) => {
+    regs.forEach(r => {
+      const fecha = String(r[1]).padStart(2, '0') + '/' + String(r[0]).padStart(2, '0') + '/2026';
+      const diaSemana = dias[new Date(2026, r[0] - 1, r[1]).getDay()];
+      values.push([
+        Utilities.getUuid(), emp.email, emp.nombre, emp.apellido,
+        emp.sector, emp.turno,
+        fecha, r[2], r[3] || '',
+        '=IF(I' + n + '="","",TEXT(MOD(TIMEVALUE(I' + n + ')-TIMEVALUE(H' + n + '),1),"[h]:mm:ss"))',
+        diaSemana
+      ]);
+      n++;
+    });
+  };
+  escribir(emps[0], perez);
+  escribir(emps[1], gomez);
+
+  regSheet.getRange(startRow, 1, values.length, 11).setValues(values);
+  logTraza('Datos demo generados (' + values.length + ' fichadas, 2 empleados)', data.adminEmail, 'verde');
+  return { success: true, message: 'Creados 2 empleados demo con ' + values.length + ' fichadas (sep-oct 2026).' };
+}
+
+function borrarDatosDemo(data) {
+  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+
+  // Registros
+  const regSheet = getRegistrosSheet();
+  const rows = regSheet.getDataRange().getValues();
+  let delReg = 0;
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (DEMO_EMAILS.indexOf(String(rows[i][1]).toLowerCase()) !== -1) {
+      regSheet.deleteRow(i + 1);
+      delReg++;
+    }
+  }
+
+  // Empleados
+  const empSheet = getEmpleadosSheet();
+  const erows = empSheet.getDataRange().getValues();
+  let delEmp = 0;
+  for (let i = erows.length - 1; i >= 1; i--) {
+    if (DEMO_EMAILS.indexOf(String(erows[i][0]).toLowerCase()) !== -1) {
+      empSheet.deleteRow(i + 1);
+      delEmp++;
+    }
+  }
+
+  logTraza('Datos demo eliminados (' + delReg + ' fichadas, ' + delEmp + ' empleados)', data.adminEmail, 'amarillo');
+  return { success: true, message: 'Eliminadas ' + delReg + ' fichadas y ' + delEmp + ' empleados demo.' };
 }
 
 // ============================================================
