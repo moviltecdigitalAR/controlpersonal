@@ -242,6 +242,9 @@
         <button class="nav-item" data-tab="settings">
           <span class="nav-item-icon">⚙️</span> Configuración
         </button>
+        <button class="nav-item" data-tab="admins">
+          <span class="nav-item-icon">🛡️</span> Administradores
+        </button>
 
         <div class="nav-section-label">OPERACIÓN</div>
         <button class="nav-item" data-tab="operacion">
@@ -430,9 +433,16 @@
               </div>
               <div class="form-group">
                 <label class="form-check">
-                  <input type="checkbox" name="esAdmin" />
+                  <input type="checkbox" name="esAdmin" id="chk-esadmin" />
                   Es administrador del sistema
                 </label>
+              </div>
+              <div class="form-group" id="emp-admin-pass-group" style="display:none">
+                <label class="form-label">Contraseña de administrador * (mín. 8 caracteres)</label>
+                <input type="password" name="adminPassword" class="form-input" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
+                <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">
+                  La persona ingresará al panel con su cuenta Google + esta contraseña.
+                </p>
               </div>
               <div id="msg-agregar"></div>
               <button type="submit" class="btn btn-primary btn-full" style="margin-top:.5rem">
@@ -668,6 +678,97 @@
                 💾 Guardar configuración
               </button>
             </form>
+          </div>
+
+        </div>
+
+        <!-- ==============================
+             TAB: ADMINISTRADORES
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="admins">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Administradores del sistema</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Administrador</th>
+                    <th>Sector</th>
+                    <th>Contraseña</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="adm-tbody">
+                  <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Designar nuevo administrador -->
+          <div class="add-emp-form">
+            <h3 style="font-weight:700;margin-bottom:1.25rem">🛡️ Designar nuevo administrador</h3>
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1.25rem">
+              Seleccione un empleado de la nómina y asígnele una contraseña. Esa persona podrá
+              ingresar al panel con su cuenta Google + esta contraseña, y tendrá acceso completo
+              (empleados, vehículos, empresas, reportes).
+            </p>
+            <form id="form-agregar-admin" novalidate>
+              <div class="form-group">
+                <label class="form-label">Empleado *</label>
+                <select id="adm-email" class="form-input" required>
+                  <option value="">Cargando nómina...</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Contraseña * (mín. 8 caracteres)</label>
+                  <input type="password" id="adm-pass" class="form-input" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Repetir contraseña *</label>
+                  <input type="password" id="adm-pass2" class="form-input" autocomplete="new-password" placeholder="Repetir" />
+                </div>
+              </div>
+              <div id="msg-agregar-admin"></div>
+              <button type="submit" class="btn btn-primary btn-full" style="margin-top:.5rem">
+                Designar administrador
+              </button>
+            </form>
+          </div>
+
+          <!-- Modal: cambiar contraseña de un admin -->
+          <div id="adm-clave-overlay" class="op-modal-overlay hidden">
+            <div class="op-modal" role="dialog" aria-modal="true">
+              <div class="op-modal-header">
+                <h3>Cambiar contraseña</h3>
+                <button type="button" id="adm-clave-close" class="op-modal-close" aria-label="Cerrar">×</button>
+              </div>
+              <div class="op-modal-body">
+                <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">
+                  Administrador: <strong id="adm-clave-email-label">—</strong>
+                </p>
+                <form id="adm-clave-form" novalidate>
+                  <input type="hidden" id="adm-clave-email" />
+                  <div class="form-group">
+                    <label class="form-label">Nueva contraseña * (mín. 8 caracteres)</label>
+                    <input type="password" id="adm-clave-pass" class="form-input" autocomplete="new-password" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Repetir contraseña *</label>
+                    <input type="password" id="adm-clave-pass2" class="form-input" autocomplete="new-password" />
+                  </div>
+                  <div id="adm-clave-msg"></div>
+                  <div class="op-modal-footer" style="padding:0;border:none;margin-top:1rem">
+                    <button type="button" id="adm-clave-cancel" class="btn btn-outline">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">💾 Guardar</button>
+                  </div>
+                </form>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -1137,6 +1238,7 @@
     records:       'Asistencias',
     reports:       'Informes',
     settings:      'Configuración',
+    admins:        'Administradores',
     operacion:     'Habilitaciones',
     reemplazos:    'Reemplazos',
     observaciones: 'Observaciones',

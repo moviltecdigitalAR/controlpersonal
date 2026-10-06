@@ -50,6 +50,9 @@ function handleAction(data) {
     case 'loginAdmin':           return loginAdmin(data);
     case 'validarToken':         return validarToken(data);
     case 'logoutAdmin':          return logoutAdmin(data);
+    case 'setearAdmin':          return setearAdmin(data);
+    case 'quitarAdmin':          return quitarAdmin(data);
+    case 'cambiarClaveAdmin':    return cambiarClaveAdmin(data);
     case 'verificarEmpleado':    return verificarEmpleado(data);
     case 'registrarMovimiento':  return registrarMovimiento(data);
     case 'obtenerEstado':        return obtenerEstado(data);
@@ -231,7 +234,7 @@ function loginAdmin(data) {
       hashGuardado = BOOTSTRAP_ADMIN_HASH;
       logTraza('Contraseña inicial provisionada para ' + email, email, 'verde');
     } else {
-      return { success: false, error: 'Este administrador no tiene contraseña configurada. Ejecute setearAdminPassHash desde el editor.' };
+      return { success: false, error: 'Este administrador no tiene contraseña configurada. Otro administrador puede asignarla desde el módulo Administradores.' };
     }
   }
   if (_sha256Hex(pass) !== hashGuardado) {
@@ -280,6 +283,117 @@ function setearAdminPassHash(email, password) {
   return { success: true };
 }
 
+// ============================================================
+// GESTIÓN DE ADMINISTRADORES DESDE EL PANEL (sin tocar el script)
+// ============================================================
+
+// Asegura que exista el encabezado de la columna Admin_Pass_Hash (col 20)
+function _asegurarColHash() {
+  const sh = getEmpleadosSheet();
+  if (!sh.getRange(1, 20).getValue()) sh.getRange(1, 20).setValue('Admin_Pass_Hash');
+}
+
+// Borra todas las sesiones activas de un email (salvo un token exceptuado)
+function _borrarSesionesDe(email, exceptoToken) {
+  try {
+    const sh   = getSesionesSheet();
+    const rows = sh.getDataRange().getValues();
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (String(rows[i][1]).toLowerCase() === String(email).toLowerCase() &&
+          String(rows[i][0]) !== String(exceptoToken || '')) {
+        sh.deleteRow(i + 1);
+      }
+    }
+  } catch (_) { /* la revocación nunca debe romper la operación principal */ }
+}
+
+function _contarAdmins() {
+  const rows = getEmpleadosSheet().getDataRange().getValues();
+  let n = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] && (rows[i][7] === true || String(rows[i][7]).toUpperCase() === 'TRUE')) n++;
+  }
+  return n;
+}
+
+function _claveValida(pass) {
+  return typeof pass === 'string' && pass.length >= 8;
+}
+
+// ---- Promover un empleado existente a administrador (con su contraseña) ----
+function setearAdmin(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const llamador = _verificarToken(data.token);
+  if (!_rateLimitOK('setearAdmin', llamador || 'x')) {
+    return { success: false, error: 'Demasiadas operaciones. Aguarde un minuto.' };
+  }
+  const email = String(data.email || '').toLowerCase().trim();
+  const pass  = String(data.password || '');
+  if (!email) return { success: false, error: 'Email requerido.' };
+  if (!_claveValida(pass)) return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
+
+  const emp = findEmpleado(email);
+  if (!emp) return { success: false, error: 'No existe un empleado con ese email. Agréguelo primero en la pestaña Empleados.' };
+
+  _asegurarColHash();
+  const sh = getEmpleadosSheet();
+  sh.getRange(emp.rowIndex, 8).setValue(true);
+  sh.getRange(emp.rowIndex, 20).setValue(_sha256Hex(pass));
+  logTraza('Nuevo administrador designado — ' + emp.data[1] + ' ' + emp.data[2], llamador || 'admin', 'verde');
+  return { success: true, message: email + ' ahora es administrador del sistema.' };
+}
+
+// ---- Quitar permisos de administrador (revoca sus sesiones) ----
+function quitarAdmin(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const email    = String(data.email || '').toLowerCase().trim();
+  const llamador = _verificarToken(data.token);
+  if (!email) return { success: false, error: 'Email requerido.' };
+  if (llamador && llamador === email) {
+    return { success: false, error: 'No puede quitarse a sí mismo. Pida a otro administrador que lo haga.' };
+  }
+  const emp = findEmpleado(email);
+  if (!emp) return { success: false, error: 'Empleado no encontrado.' };
+  const eraAdmin = emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
+  if (!eraAdmin) return { success: false, error: 'Ese empleado no es administrador.' };
+  if (_contarAdmins() <= 1) {
+    return { success: false, error: 'Debe existir al menos un administrador.' };
+  }
+
+  const sh = getEmpleadosSheet();
+  sh.getRange(emp.rowIndex, 8).setValue(false);
+  sh.getRange(emp.rowIndex, 20).setValue('');
+  _borrarSesionesDe(email, null);
+  logTraza('Administrador removido — ' + emp.data[1] + ' ' + emp.data[2], llamador || 'admin', 'rojo');
+  return { success: true, message: email + ' dejó de ser administrador.' };
+}
+
+// ---- Cambiar la contraseña de un administrador (propia o de otro) ----
+function cambiarClaveAdmin(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const llamador = _verificarToken(data.token);
+  if (!_rateLimitOK('cambiarClave', llamador || 'x')) {
+    return { success: false, error: 'Demasiadas operaciones. Aguarde un minuto.' };
+  }
+  const email = String(data.email || '').toLowerCase().trim();
+  const pass  = String(data.password || '');
+  if (!email) return { success: false, error: 'Email requerido.' };
+  if (!_claveValida(pass)) return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
+
+  const emp = findEmpleado(email);
+  if (!emp) return { success: false, error: 'Empleado no encontrado.' };
+  const esAdmin = emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
+  if (!esAdmin) return { success: false, error: 'Ese empleado no es administrador.' };
+
+  _asegurarColHash();
+  getEmpleadosSheet().getRange(emp.rowIndex, 20).setValue(_sha256Hex(pass));
+  // Revocar las sesiones de ese admin, salvo la del llamador (si cambia la propia,
+  // no lo echamos de la sesión actual)
+  _borrarSesionesDe(email, data.token || null);
+  logTraza('Contraseña de administrador cambiada — ' + email, llamador || 'admin', 'amarillo');
+  return { success: true, message: 'Contraseña actualizada correctamente.' };
+}
+
 function findEmpleado(email) {
   const sheet = getEmpleadosSheet();
   const rows  = sheet.getDataRange().getValues();
@@ -314,7 +428,9 @@ function rowToEmpleado(row) {
     habilitacion:  row[16] || 'habilitado',
     obsGestion:    row[17] || '',
     // ---- Convenio (columna S) ----
-    convenio:      row[18] || ''
+    convenio:      row[18] || '',
+    // ---- ¿Tiene contraseña de administrador configurada? (flag, nunca el hash) ----
+    tieneClaveAdmin: !!(row[19] && String(row[19]).trim())
   };
 }
 
@@ -570,21 +686,30 @@ function agregarEmpleado(data) {
   if (!e || !e.email || !e.nombre || !e.apellido) return { success: false, error: 'Datos incompletos.' };
   if (findEmpleado(e.email)) return { success: false, error: 'Ya existe un empleado con ese email.' };
 
+  // Si se marca como administrador, la contraseña es obligatoria (mín. 8)
+  const seraAdmin = e.esAdmin === true || e.esAdmin === 'true';
+  if (seraAdmin && !_claveValida(e.adminPassword)) {
+    return { success: false, error: 'Para crear un administrador, ingrese una contraseña de al menos 8 caracteres.' };
+  }
+
+  _asegurarColHash();
   getEmpleadosSheet().appendRow([
     e.email.toLowerCase().trim(),
     e.nombre, e.apellido, e.sector || '', e.turno || '',
     '',   // dispositivo vacío
     true, // activo
-    e.esAdmin === true || e.esAdmin === 'true' ? true : false,
+    seraAdmin,
     'Fuera',
     // ---- Módulo Operación ----
     e.empresa || '', e.dni || '', e.telefono || '',
     e.aptoVenc || '', e.licenciaTipo || '', e.licenciaVenc || '',
     'ok', 'habilitado', '',
-    e.convenio || ''
+    e.convenio || '',
+    // ---- Contraseña de administrador (hash; vacío si no es admin) ----
+    seraAdmin ? _sha256Hex(e.adminPassword) : ''
   ]);
-  logTraza(`Empleado agregado — ${e.nombre} ${e.apellido} (${e.sector || 'sin sector'})`, data.adminEmail, 'verde');
-  return { success: true, message: 'Empleado agregado correctamente.' };
+  logTraza(`Empleado agregado — ${e.nombre} ${e.apellido} (${e.sector || 'sin sector'})`, _verificarToken(data.token) || data.adminEmail, 'verde');
+  return { success: true, message: seraAdmin ? 'Empleado agregado y designado administrador.' : 'Empleado agregado correctamente.' };
 }
 
 function actualizarEmpleado(data) {
@@ -593,6 +718,11 @@ function actualizarEmpleado(data) {
   if (!emp) return { success: false, error: 'Empleado no encontrado.' };
 
   migrarEmpleadosColumnas();
+  // Los permisos de administrador se gestionan con revocación de sesiones y
+  // contraseña: bloquear el cambio directo por este canal (anti-bypass).
+  if (data.campo === 'esAdmin') {
+    return { success: false, error: 'Los permisos de administrador se gestionan en el módulo Administradores.' };
+  }
   const colMap = {
     nombre: 2, apellido: 3, sector: 4, turno: 5, activo: 7, esAdmin: 8,
     // ---- Módulo Operación ----

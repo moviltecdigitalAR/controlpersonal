@@ -134,6 +134,11 @@ const API = (() => {
   const asignarReemplazo     = (adm, id, nombre)    => call('asignarReemplazo',     { adminEmail: adm, id, candidatoNombre: nombre });
   const descartarReemplazo   = (adm, id)            => call('descartarReemplazo',   { adminEmail: adm, id });
 
+  // ---- Gestión de administradores (módulo Administradores) ----
+  const setearAdmin       = (adm, email, password) => call('setearAdmin',       { adminEmail: adm, email, password });
+  const quitarAdmin       = (adm, email)           => call('quitarAdmin',       { adminEmail: adm, email });
+  const cambiarClaveAdmin = (adm, email, password) => call('cambiarClaveAdmin', { adminEmail: adm, email, password });
+
   return {
     call,   // acceso genérico al backend (usado por Auth para login/validación de sesión)
     verificarEmpleado, registrarMovimiento, obtenerEstado, getConfig,
@@ -144,6 +149,7 @@ const API = (() => {
     agregarVehiculo, actualizarVehiculo,
     agregarEmpresa, actualizarEmpresa,
     agregarObservacion, resolverObservacion, marcarAlertasLeidas,
-    registrarAusencia, asignarReemplazo, descartarReemplazo
+    registrarAusencia, asignarReemplazo, descartarReemplazo,
+    setearAdmin, quitarAdmin, cambiarClaveAdmin
   };
 })();

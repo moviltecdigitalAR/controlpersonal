@@ -138,6 +138,7 @@ const Dashboard = (() => {
       case 'records':    _renderRegistros();  break;
       case 'reports':    _renderInformes();   break;
       case 'settings':   _renderConfig();     break;
+      case 'admins':     _renderAdmins();     break;
       // ---- Módulo Operación (ex-ShiftControl) ----
       case 'operacion':
       case 'reemplazos':
@@ -288,18 +289,176 @@ const Dashboard = (() => {
     const form = document.getElementById('form-agregar-empleado');
     if (!form || form._bound) return;
     form._bound = true;
+
+    // Mostrar/ocultar el campo de contraseña admin según el checkbox
+    const chk = form.querySelector('[name="esAdmin"]');
+    const passGroup = document.getElementById('emp-admin-pass-group');
+    if (chk && passGroup) {
+      chk.addEventListener('change', () => {
+        passGroup.style.display = chk.checked ? '' : 'none';
+      });
+    }
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(form));
       data.esAdmin = form.querySelector('[name="esAdmin"]').checked;
+      if (data.esAdmin) data.adminPassword = form.querySelector('[name="adminPassword"]').value;
       const r = await API.agregarEmpleado(_admin.email, data);
       const msg = document.getElementById('msg-agregar');
       if (msg) {
         msg.textContent  = r.success ? r.message : 'Error: ' + r.error;
         msg.className    = r.success ? 'form-msg success' : 'form-msg error';
       }
-      if (r.success) { form.reset(); _renderEmpleados(); }
+      if (r.success) {
+        form.reset();
+        if (passGroup) passGroup.style.display = 'none';
+        _renderEmpleados();
+      }
     });
+  }
+
+  // ============================================================
+  // ADMINISTRADORES (gestión de accesos al panel)
+  // ============================================================
+
+  let _adminsBound = false;
+
+  async function _renderAdmins() {
+    // Nómina fresca (para ver admins y candidatos actualizados)
+    const result = await API.obtenerEmpleados(_admin.email);
+    if (result.success) _empleados = result.empleados;
+
+    _bindAdminsUI();
+
+    const yo = (_admin.email || '').toLowerCase();
+    const admins = _empleados.filter(e => e.esAdmin);
+
+    const tbody = document.getElementById('adm-tbody');
+    if (tbody) {
+      tbody.innerHTML = admins.length === 0
+        ? '<tr><td colspan="4" class="text-center text-muted">No hay administradores</td></tr>'
+        : admins.map(a => `
+            <tr>
+              <td>
+                <div class="emp-name">${_esc(a.nombre)} ${_esc(a.apellido)}
+                  ${a.email.toLowerCase() === yo ? ' <span class="badge badge-info">Vos</span>' : ''}
+                </div>
+                <div class="text-small text-muted">${_esc(a.email)}</div>
+              </td>
+              <td>${_esc(a.sector) || '—'}</td>
+              <td>
+                <span class="badge ${a.tieneClaveAdmin ? 'badge-success' : 'badge-warning'}">
+                  ${a.tieneClaveAdmin ? 'Configurada' : 'Sin configurar'}
+                </span>
+              </td>
+              <td class="actions-cell">
+                <button class="btn btn-sm btn-outline" onclick="Dashboard.abrirModalClave('${_esc(a.email)}')">🔑 Cambiar contraseña</button>
+                ${a.email.toLowerCase() === yo ? '' : `<button class="btn btn-sm btn-danger" onclick="Dashboard.quitarAdmin('${_esc(a.email)}')">Quitar</button>`}
+              </td>
+            </tr>`).join('');
+    }
+
+    // Candidatos: empleados activos que aún no son admins
+    const sel = document.getElementById('adm-email');
+    if (sel) {
+      const candidatos = _empleados.filter(e => !e.esAdmin && e.activo);
+      sel.innerHTML = candidatos.length
+        ? '<option value="">— Seleccione un empleado —</option>' + candidatos.map(e =>
+            `<option value="${_esc(e.email)}">${_esc(e.nombre)} ${_esc(e.apellido)} — ${_esc(e.email)}</option>`).join('')
+        : '<option value="">No hay empleados disponibles (primero agréguelos en Empleados)</option>';
+    }
+  }
+
+  function _bindAdminsUI() {
+    if (_adminsBound) return;
+    _adminsBound = true;
+
+    // Form: designar nuevo administrador
+    const form = document.getElementById('form-agregar-admin');
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('adm-email').value;
+      const p1    = document.getElementById('adm-pass').value;
+      const p2    = document.getElementById('adm-pass2').value;
+      const msg   = document.getElementById('msg-agregar-admin');
+      const mostrar = (texto, ok) => {
+        if (msg) { msg.textContent = texto; msg.className = ok ? 'form-msg success' : 'form-msg error'; }
+      };
+      if (!email)                        return mostrar('Seleccione un empleado.', false);
+      if (p1.length < 8)                 return mostrar('La contraseña debe tener al menos 8 caracteres.', false);
+      if (p1 !== p2)                     return mostrar('Las contraseñas no coinciden.', false);
+
+      const btn = form.querySelector('button[type="submit"]');
+      btn.disabled = true; btn.textContent = 'Guardando...';
+      try {
+        const r = await API.setearAdmin(_admin.email, email, p1);
+        mostrar(r.success ? r.message : 'Error: ' + r.error, r.success);
+        if (r.success) {
+          form.reset();
+          _renderAdmins();
+        }
+      } catch (err) {
+        mostrar('Error: ' + err.message, false);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Designar administrador';
+      }
+    });
+
+    // Modal: cambiar contraseña de un admin
+    const overlay = document.getElementById('adm-clave-overlay');
+    const cerrarModal = () => {
+      overlay?.classList.add('hidden');
+      const f = document.getElementById('adm-clave-form');
+      if (f) f.reset();
+      const m = document.getElementById('adm-clave-msg');
+      if (m) m.innerHTML = '';
+    };
+    document.getElementById('adm-clave-close')?.addEventListener('click', cerrarModal);
+    document.getElementById('adm-clave-cancel')?.addEventListener('click', cerrarModal);
+    overlay?.addEventListener('click', (e) => { if (e.target === overlay) cerrarModal(); });
+
+    const mform = document.getElementById('adm-clave-form');
+    mform?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('adm-clave-email').value;
+      const p1    = document.getElementById('adm-clave-pass').value;
+      const p2    = document.getElementById('adm-clave-pass2').value;
+      const msg   = document.getElementById('adm-clave-msg');
+      const mostrar = (texto, ok) => {
+        if (msg) { msg.textContent = texto; msg.className = ok ? 'form-msg success' : 'form-msg error'; }
+      };
+      if (p1.length < 8) return mostrar('La contraseña debe tener al menos 8 caracteres.', false);
+      if (p1 !== p2)     return mostrar('Las contraseñas no coinciden.', false);
+
+      const btn = mform.querySelector('button[type="submit"]');
+      btn.disabled = true; btn.textContent = 'Guardando...';
+      try {
+        const r = await API.cambiarClaveAdmin(_admin.email, email, p1);
+        mostrar(r.success ? r.message : 'Error: ' + r.error, r.success);
+        if (r.success) {
+          setTimeout(() => { cerrarModal(); _renderAdmins(); }, 900);
+        }
+      } catch (err) {
+        mostrar('Error: ' + err.message, false);
+      } finally {
+        btn.disabled = false; btn.textContent = '💾 Guardar';
+      }
+    });
+  }
+
+  function abrirModalClave(email) {
+    document.getElementById('adm-clave-email').value = email;
+    document.getElementById('adm-clave-email-label').textContent = email;
+    document.getElementById('adm-clave-overlay')?.classList.remove('hidden');
+    setTimeout(() => document.getElementById('adm-clave-pass')?.focus(), 50);
+  }
+
+  async function quitarAdmin(email) {
+    if (!confirm(`¿Quitar a ${email} como administrador? Perderá el acceso al panel (sus sesiones activas se revocan).`)) return;
+    const r = await API.quitarAdmin(_admin.email, email);
+    if (r.success) _renderAdmins();
+    else alert('Error: ' + r.error);
   }
 
   // ============================================================
@@ -1040,6 +1199,8 @@ const Dashboard = (() => {
     resetDispositivo,
     toggleActivo,
     verDetalleEmpleado,
+    abrirModalClave,
+    quitarAdmin,
     _setupEmployeeTab
   };
 })();
