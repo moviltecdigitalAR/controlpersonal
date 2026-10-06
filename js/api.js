@@ -135,6 +135,7 @@ const API = (() => {
   const descartarReemplazo   = (adm, id)            => call('descartarReemplazo',   { adminEmail: adm, id });
 
   return {
+    call,   // acceso genérico al backend (usado por Auth para login/validación de sesión)
     verificarEmpleado, registrarMovimiento, obtenerEstado, getConfig,
     obtenerEmpleados, agregarEmpleado, actualizarEmpleado,
     resetearDispositivo, obtenerReporte, actualizarConfig,
