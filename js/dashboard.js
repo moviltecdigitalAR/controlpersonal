@@ -41,32 +41,15 @@ const Dashboard = (() => {
     try {
       const cfg = await API.getConfig();
       if (cfg.success) _config = cfg.config;
+      _admin = user;
 
-      // Verificar que el email tiene permisos admin en Sheets
-      const empResult = await API.obtenerEmpleados(user.email);
-      const errTxt = String(empResult.error || '').toLowerCase();
-      if (!empResult.success && errTxt.indexOf('permiso') !== -1 && empResult.empleados === undefined && !empResult.config) {
-        // El backend está en modo seguro (rechazó por falta de token):
-        // no podemos confirmar permisos aún, pedimos la contraseña.
-        _admin = user;
-        _setLoading(false);
-        _pedirPassword(user.email);
-        return;
-      }
-      if (!empResult.success) {
-        _showAdminError('Sin permisos de administrador. Verifique que su email esté marcado como Es_Admin=TRUE en la planilla.');
-        Auth.signOut();
-        return;
-      }
-
-      _admin     = user;
-      _empleados = empResult.empleados;
-
-      // Segundo factor: si hay SESSION_SECRET configurado en el backend,
-      // el login exige contraseña. Si ya tenemos token válido, entramos directo.
-      _setLoading(true, 'Verificando sesión segura...');
+      // 1) ¿Hay sesión admin válida (token vigente)? → entrar directo
       const sesion = await Auth.validarAdminSession();
-      if (sesion.success) return _entrarPanel();
+      if (sesion.success) return await _entrarPanelConDatos();
+
+      // 2) Sin token: pedir la contraseña (el backend valida email+pass
+      //    y devuelve el token firmado)
+      _setLoading(false);
       _pedirPassword(user.email);
 
     } catch (err) {
@@ -93,7 +76,7 @@ const Dashboard = (() => {
         try {
           const r = await Auth.adminLogin(_admin.email, pass);
           if (!r.success) throw new Error(r.error || 'Contraseña incorrecta.');
-          _entrarPanel();
+          await _entrarPanelConDatos();
         } catch (err) {
           if (msg) msg.innerHTML = `<div class="form-msg error">${_esc(err.message)}</div>`;
           btn.disabled = false;
@@ -104,20 +87,23 @@ const Dashboard = (() => {
     setTimeout(() => document.getElementById('admin-pass-input')?.focus(), 50);
   }
 
-  // Entrar al panel (ya validado Google + contraseña)
-  function _entrarPanel() {
-      setText('admin-user-name',    _admin.name || _admin.email);
-      setText('admin-user-email',   _admin.email);
-      if (_admin.picture) {
-        const img = document.getElementById('admin-avatar');
-        if (img) img.src = _admin.picture;
-      }
+  // Entrar al panel asegurando tener la nómina cargada (con token válido)
+  async function _entrarPanelConDatos() {
+    const empResult = await API.obtenerEmpleados(_admin.email);
+    if (empResult.success) _empleados = empResult.empleados;
 
-      _setLoading(false);
-      _showSection('admin-dashboard');
-      _setupTabs();
-      Operacion.init(_admin);   // Módulo Operación (ex-ShiftControl)
-      _loadTab('overview');
+    setText('admin-user-name',    _admin.name || _admin.email);
+    setText('admin-user-email',   _admin.email);
+    if (_admin.picture) {
+      const img = document.getElementById('admin-avatar');
+      if (img) img.src = _admin.picture;
+    }
+
+    _setLoading(false);
+    _showSection('admin-dashboard');
+    _setupTabs();
+    Operacion.init(_admin);   // Módulo Operación (ex-ShiftControl)
+    _loadTab('overview');
   }
 
   // ============================================================

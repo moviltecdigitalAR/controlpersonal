@@ -105,11 +105,17 @@ function getSesionesSheet()    { return ensureSheet('Sesiones', ['Token', 'Email
 //  4. Rate limiting por acción+email con CacheService.
 //  5. Fichada de empleado exige fingerprintId válido (anti-fraude).
 //
-// SETUP (una sola vez):
-//  - Propiedades del script: SESSION_SECRET = <texto aleatorio largo>
-//  - En hoja Empleados, para cada admin, setear columna
-//    Admin_Pass_Hash = SHA256 de su contraseña.
+// SETUP AUTOMÁTICO (cero pasos manuales):
+//  - SESSION_SECRET: se genera solo la primera vez que alguien hace
+//    login y queda guardado en las Propiedades del script.
+//  - Contraseña del administrador inicial: la primera vez que
+//    BOOTSTRAP_ADMIN_EMAIL intente entrar, el sistema escribe
+//    automáticamente su hash (BOOTSTRAP_ADMIN_HASH) en la planilla.
+//    Para cambiarla después: setearAdminPassHash('email', 'nueva')
 // ============================================================
+
+const BOOTSTRAP_ADMIN_EMAIL = 'moviltecdigital@gmail.com';
+const BOOTSTRAP_ADMIN_HASH  = 'cd5aa956e1ad485481d8b1d51e0cb902406adffdb9294ab859c5d9989d8e5588'; // SHA-256
 
 const SESSION_TTL_HORAS = 12;
 const RATE_LIMIT_MAX    = 30;   // llamadas
@@ -143,8 +149,14 @@ function _rateLimitOK(accion, clave) {
 
 // ---- Generar token firmado: "expira|firma" ----
 function _generarToken(email) {
-  const secret = PropertiesService.getScriptProperties().getProperty('SESSION_SECRET');
-  if (!secret) throw new Error('SESSION_SECRET no configurado en Propiedades del script.');
+  const props  = PropertiesService.getScriptProperties();
+  let   secret = props.getProperty('SESSION_SECRET');
+  if (!secret) {
+    // Auto-provisionamiento: se crea una sola vez y queda persistido
+    // en las propiedades del script. No hay que configurar nada a mano.
+    secret = Utilities.getUuid() + '-' + Utilities.getUuid() + '-' + Utilities.getUuid();
+    props.setProperty('SESSION_SECRET', secret);
+  }
   const expira = Date.now() + SESSION_TTL_HORAS * 3600 * 1000;
   const firma  = _hmacHex(secret, String(email).toLowerCase() + '|' + expira);
   return expira + '|' + firma;
@@ -208,9 +220,19 @@ function loginAdmin(data) {
   if (!emp || !esAdmin) return { success: false, error: 'Credenciales inválidas.' };
 
   // Hash de la contraseña guardado en columna Admin_Pass_Hash (col 20 / índice 19)
-  const hashGuardado = String(emp.data[19] || '').trim().toLowerCase();
+  let hashGuardado = String(emp.data[19] || '').trim().toLowerCase();
   if (!hashGuardado) {
-    return { success: false, error: 'Este administrador no tiene contraseña configurada. Genere el hash con la función setearAdminPass.' };
+    // Provisión automática SOLO para el administrador inicial:
+    // la primera vez que entra, se escribe su hash pre-configurado.
+    if (email === BOOTSTRAP_ADMIN_EMAIL && BOOTSTRAP_ADMIN_HASH) {
+      const sh = getEmpleadosSheet();
+      if (!sh.getRange(1, 20).getValue()) sh.getRange(1, 20).setValue('Admin_Pass_Hash');
+      sh.getRange(emp.rowIndex, 20).setValue(BOOTSTRAP_ADMIN_HASH);
+      hashGuardado = BOOTSTRAP_ADMIN_HASH;
+      logTraza('Contraseña inicial provisionada para ' + email, email, 'verde');
+    } else {
+      return { success: false, error: 'Este administrador no tiene contraseña configurada. Ejecute setearAdminPassHash desde el editor.' };
+    }
   }
   if (_sha256Hex(pass) !== hashGuardado) {
     return { success: false, error: 'Credenciales inválidas.' };
