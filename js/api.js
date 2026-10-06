@@ -18,7 +18,9 @@ const API = (() => {
     // rechaza si no es válido. Las acciones públicas (login, fichada
     // de empleado) no llevan token.
     let payload = { action, ...params };
-    if (!params.token && window.Auth && typeof Auth.getAdminToken === 'function') {
+    // Adjuntar el token de sesión admin si existe. OJO: Auth es un const
+    // global (no propiedad de window), se referencia directamente.
+    if (!params.token && typeof Auth !== 'undefined' && typeof Auth.getAdminToken === 'function') {
       const t = Auth.getAdminToken();
       if (t) payload.token = t;
     }

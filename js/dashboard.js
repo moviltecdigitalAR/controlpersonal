@@ -90,7 +90,11 @@ const Dashboard = (() => {
   // Entrar al panel asegurando tener la nómina cargada (con token válido)
   async function _entrarPanelConDatos() {
     const empResult = await API.obtenerEmpleados(_admin.email);
-    if (empResult.success) _empleados = empResult.empleados;
+    if (!empResult.success) {
+      _showAdminError('No se pudo cargar el panel: ' + (empResult.error || 'error desconocido'));
+      return;
+    }
+    _empleados = empResult.empleados;
 
     setText('admin-user-name',    _admin.name || _admin.email);
     setText('admin-user-email',   _admin.email);
@@ -971,7 +975,7 @@ const Dashboard = (() => {
   }
 
   function _showSection(id) {
-    ['admin-login','admin-dashboard','admin-error'].forEach(s => {
+    ['admin-login','admin-dashboard','admin-error','admin-pass'].forEach(s => {
       const el = document.getElementById(s);
       if (el) el.classList.toggle('hidden', s !== id);
     });
