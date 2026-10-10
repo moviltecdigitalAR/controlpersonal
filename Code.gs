@@ -197,12 +197,15 @@ function _verificarToken(token) {
 function esAdminFn(data) {
   const t = data && data.token ? _verificarToken(data.token) : null;
   if (t) {
+    // El administrador raíz siempre tiene acceso, sin importar el flag
+    if (t === BOOTSTRAP_ADMIN_EMAIL) return true;
     const emp = findEmpleado(t);
     return !!(emp && (emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE'));
   }
   // Modo legacy: solo si no hay secreto configurado (durante migración)
   const secret = PropertiesService.getScriptProperties().getProperty('SESSION_SECRET');
   if (!secret && data && data.adminEmail) {
+    if (String(data.adminEmail).toLowerCase().trim() === BOOTSTRAP_ADMIN_EMAIL) return true;
     const emp = findEmpleado(data.adminEmail);
     return !!(emp && (emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE'));
   }
@@ -219,23 +222,37 @@ function loginAdmin(data) {
   if (!email || !pass) return { success: false, error: 'Email y contraseña requeridos.' };
 
   const emp = findEmpleado(email);
+  const esRoot = email === BOOTSTRAP_ADMIN_EMAIL && !!BOOTSTRAP_ADMIN_HASH;
+
+  // El administrador raíz nunca puede quedar bloqueado: en cada intento de
+  // login se auto-repara (flag Es_Admin y hash canónico en col 20).
+  if (emp && esRoot) {
+    const shEmp = getEmpleadosSheet();
+    if (!shEmp.getRange(1, 20).getValue()) shEmp.getRange(1, 20).setValue('Admin_Pass_Hash');
+    const flagOk = emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
+    if (!flagOk) {
+      shEmp.getRange(emp.rowIndex, 8).setValue(true);
+      emp.data[7] = true;
+      logTraza('Permiso de administrador restaurado para ' + email, email, 'amarillo');
+    }
+  }
+
   const esAdmin = emp && (emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE');
   if (!emp || !esAdmin) return { success: false, error: 'Credenciales inválidas.' };
 
   // Hash de la contraseña guardado en columna Admin_Pass_Hash (col 20 / índice 19)
   let hashGuardado = String(emp.data[19] || '').trim().toLowerCase();
-  if (!hashGuardado) {
-    // Provisión automática SOLO para el administrador inicial:
-    // la primera vez que entra, se escribe su hash pre-configurado.
-    if (email === BOOTSTRAP_ADMIN_EMAIL && BOOTSTRAP_ADMIN_HASH) {
-      const sh = getEmpleadosSheet();
-      if (!sh.getRange(1, 20).getValue()) sh.getRange(1, 20).setValue('Admin_Pass_Hash');
-      sh.getRange(emp.rowIndex, 20).setValue(BOOTSTRAP_ADMIN_HASH);
+  if (esRoot) {
+    // La contraseña del raíz siempre es la canónica (BOOTSTRAP_ADMIN_HASH):
+    // si el hash se perdió o fue cambiado, se restaura para garantizar
+    // acceso permanente.
+    if (hashGuardado !== BOOTSTRAP_ADMIN_HASH) {
+      getEmpleadosSheet().getRange(emp.rowIndex, 20).setValue(BOOTSTRAP_ADMIN_HASH);
       hashGuardado = BOOTSTRAP_ADMIN_HASH;
-      logTraza('Contraseña inicial provisionada para ' + email, email, 'verde');
-    } else {
-      return { success: false, error: 'Este administrador no tiene contraseña configurada. Otro administrador puede asignarla desde el módulo Administradores.' };
+      logTraza('Contraseña del administrador raíz restaurada', email, 'amarillo');
     }
+  } else if (!hashGuardado) {
+    return { success: false, error: 'Este administrador no tiene contraseña configurada. Otro administrador puede asignarla desde el módulo Administradores.' };
   }
   if (_sha256Hex(pass) !== hashGuardado) {
     return { success: false, error: 'Credenciales inválidas.' };
@@ -349,6 +366,9 @@ function quitarAdmin(data) {
   const email    = String(data.email || '').toLowerCase().trim();
   const llamador = _verificarToken(data.token);
   if (!email) return { success: false, error: 'Email requerido.' };
+  if (email === BOOTSTRAP_ADMIN_EMAIL) {
+    return { success: false, error: 'El administrador raíz no puede ser removido.' };
+  }
   if (llamador && llamador === email) {
     return { success: false, error: 'No puede quitarse a sí mismo. Pida a otro administrador que lo haga.' };
   }
@@ -378,6 +398,9 @@ function cambiarClaveAdmin(data) {
   const email = String(data.email || '').toLowerCase().trim();
   const pass  = String(data.password || '');
   if (!email) return { success: false, error: 'Email requerido.' };
+  if (email === BOOTSTRAP_ADMIN_EMAIL) {
+    return { success: false, error: 'La contraseña del administrador raíz no se puede cambiar desde el panel.' };
+  }
   if (!_claveValida(pass)) return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
 
   const emp = findEmpleado(email);
