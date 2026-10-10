@@ -139,6 +139,10 @@ const API = (() => {
   const quitarAdmin       = (adm, email)           => call('quitarAdmin',       { adminEmail: adm, email });
   const cambiarClaveAdmin = (adm, email, password) => call('cambiarClaveAdmin', { adminEmail: adm, email, password });
 
+  // ---- Datos demo (prototipo) ----
+  const generarDatosDemo = (adm) => call('generarDatosDemo', { adminEmail: adm });
+  const borrarDatosDemo  = (adm) => call('borrarDatosDemo',  { adminEmail: adm });
+
   return {
     call,   // acceso genérico al backend (usado por Auth para login/validación de sesión)
     verificarEmpleado, registrarMovimiento, obtenerEstado, getConfig,
@@ -150,6 +154,7 @@ const API = (() => {
     agregarEmpresa, actualizarEmpresa,
     agregarObservacion, resolverObservacion, marcarAlertasLeidas,
     registrarAusencia, asignarReemplazo, descartarReemplazo,
-    setearAdmin, quitarAdmin, cambiarClaveAdmin
+    setearAdmin, quitarAdmin, cambiarClaveAdmin,
+    generarDatosDemo, borrarDatosDemo
   };
 })();

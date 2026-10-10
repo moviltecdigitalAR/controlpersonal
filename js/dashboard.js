@@ -1086,6 +1086,47 @@ const Dashboard = (() => {
         }
       });
     }
+
+    // Botones de datos demo
+    const msgDemo = document.getElementById('msg-demo');
+    const mostrar = (texto, ok) => {
+      if (msgDemo) {
+        msgDemo.textContent = texto;
+        msgDemo.className   = ok ? 'form-msg success' : 'form-msg error';
+      }
+    };
+    const btnGenDemo = document.getElementById('btn-generar-demo');
+    if (btnGenDemo && !btnGenDemo._bound) {
+      btnGenDemo._bound = true;
+      btnGenDemo.addEventListener('click', async () => {
+        if (!confirm('¿Generar 2 empleados demo con fichadas del mes anterior y actual?')) return;
+        btnGenDemo.disabled = true; btnGenDemo.textContent = 'Generando...';
+        try {
+          const r = await API.generarDatosDemo(_admin.email);
+          mostrar(r.success ? '✅ ' + r.message : '❌ ' + r.error, r.success);
+        } catch (err) {
+          mostrar('❌ ' + err.message, false);
+        } finally {
+          btnGenDemo.disabled = false; btnGenDemo.textContent = '✨ Generar datos demo';
+        }
+      });
+    }
+    const btnBorDemo = document.getElementById('btn-borrar-demo');
+    if (btnBorDemo && !btnBorDemo._bound) {
+      btnBorDemo._bound = true;
+      btnBorDemo.addEventListener('click', async () => {
+        if (!confirm('¿Borrar TODOS los datos demo (empleados, fichadas y novedades)?')) return;
+        btnBorDemo.disabled = true; btnBorDemo.textContent = 'Borrando...';
+        try {
+          const r = await API.borrarDatosDemo(_admin.email);
+          mostrar(r.success ? '✅ ' + r.message : '❌ ' + r.error, r.success);
+        } catch (err) {
+          mostrar('❌ ' + err.message, false);
+        } finally {
+          btnBorDemo.disabled = false; btnBorDemo.textContent = '🗑️ Borrar datos demo';
+        }
+      });
+    }
   }
 
   // ============================================================
