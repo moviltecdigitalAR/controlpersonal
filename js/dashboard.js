@@ -105,8 +105,15 @@ const Dashboard = (() => {
 
     _setLoading(false);
     _showSection('admin-dashboard');
+
+    // Variante del producto: la edición "general" no incluye los módulos
+    // exclusivos de minería (Habilitaciones, Reemplazos, Vehículos)
+    if ((window.APP_CONFIG || {}).VARIANTE !== 'mineria') {
+      document.querySelectorAll('[data-variante="mineria"]').forEach(el => el.remove());
+    }
+
     _setupTabs();
-    Operacion.init(_admin);   // Módulo Operación (ex-ShiftControl)
+    Operacion.init(_admin);   // Módulo Operación (también renderiza Observaciones, Empresas y Trazabilidad)
     _loadTab('overview');
   }
 

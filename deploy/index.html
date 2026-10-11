@@ -194,6 +194,24 @@
     </div>
   </div>
 
+  <!-- Admin Contraseña (segundo factor después de Google) -->
+  <div id="admin-pass" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1.5rem">
+    <div class="card" style="max-width:400px;width:100%">
+      <div class="card-icon">🔑</div>
+      <h2 class="card-title">Confirmar identidad</h2>
+      <p class="card-subtitle">Ingresó como <strong id="admin-pass-email" style="color:var(--primary)"></strong>.<br/>Por seguridad, confirme su contraseña de administrador.</p>
+      <form id="admin-pass-form">
+        <div class="form-group">
+          <label class="form-label" for="admin-pass-input">Contraseña de administrador</label>
+          <input type="password" id="admin-pass-input" class="form-input" placeholder="••••••••" autocomplete="current-password" required />
+        </div>
+        <div id="admin-pass-msg"></div>
+        <button type="submit" id="admin-pass-btn" class="btn btn-primary" style="width:100%">Ingresar al panel</button>
+      </form>
+      <button onclick="Auth.signOut();window.location.reload()" class="btn btn-outline" style="width:100%;margin-top:.6rem">Usar otra cuenta</button>
+    </div>
+  </div>
+
   <!-- Admin Dashboard -->
   <div id="admin-dashboard" class="hidden admin-layout">
 
@@ -224,18 +242,21 @@
         <button class="nav-item" data-tab="settings">
           <span class="nav-item-icon">⚙️</span> Configuración
         </button>
+        <button class="nav-item" data-tab="admins">
+          <span class="nav-item-icon">🛡️</span> Administradores
+        </button>
 
         <div class="nav-section-label">OPERACIÓN</div>
-        <button class="nav-item" data-tab="operacion">
+        <button class="nav-item" data-tab="operacion" data-variante="mineria">
           <span class="nav-item-icon">🦺</span> Habilitaciones
         </button>
-        <button class="nav-item" data-tab="reemplazos">
+        <button class="nav-item" data-tab="reemplazos" data-variante="mineria">
           <span class="nav-item-icon">🔄</span> Reemplazos
         </button>
         <button class="nav-item" data-tab="observaciones">
           <span class="nav-item-icon">⚠️</span> Observaciones
         </button>
-        <button class="nav-item" data-tab="vehiculos">
+        <button class="nav-item" data-tab="vehiculos" data-variante="mineria">
           <span class="nav-item-icon">🚚</span> Vehículos
         </button>
         <button class="nav-item" data-tab="empresas">
@@ -412,9 +433,16 @@
               </div>
               <div class="form-group">
                 <label class="form-check">
-                  <input type="checkbox" name="esAdmin" />
+                  <input type="checkbox" name="esAdmin" id="chk-esadmin" />
                   Es administrador del sistema
                 </label>
+              </div>
+              <div class="form-group" id="emp-admin-pass-group" style="display:none">
+                <label class="form-label">Contraseña de administrador * (mín. 8 caracteres)</label>
+                <input type="password" name="adminPassword" class="form-input" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
+                <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">
+                  La persona ingresará al panel con su cuenta Google + esta contraseña.
+                </p>
               </div>
               <div id="msg-agregar"></div>
               <button type="submit" class="btn btn-primary btn-full" style="margin-top:.5rem">
@@ -430,9 +458,14 @@
              ============================== -->
         <div class="tab-pane hidden" data-tab-pane="records">
 
-          <!-- Barra de control: mes + vista + búsqueda + export -->
+          <!-- Barra de control: mes + período + vista + búsqueda + export -->
           <div class="filters-bar">
             <input type="month" id="reg-mes" class="form-input" title="Mes a consultar" style="width:165px" />
+            <select id="reg-periodo" class="form-input" title="Período de cierre (UOCRA quincenal · AOMA/fuera de convenio mensual)" style="width:170px">
+              <option value="mes">Mes completo</option>
+              <option value="q1">1ª quincena (1-15)</option>
+              <option value="q2">2ª quincena (16-fin)</option>
+            </select>
             <div class="seg-toggle" id="reg-vista-toggle">
               <button type="button" data-vista="resumen" class="seg-btn seg-active">📊 Resumen</button>
               <button type="button" data-vista="calendario" class="seg-btn">🗓️ Calendario</button>
@@ -446,7 +479,7 @@
           <div id="reg-view-resumen">
             <div class="table-container">
               <div class="table-header">
-                <span class="table-title">Resumen mensual por empleado</span>
+                <span class="table-title">Resumen por empleado</span>
                 <span id="reg-count" class="text-small text-muted"></span>
               </div>
               <div style="overflow-x:auto">
@@ -455,21 +488,23 @@
                     <tr>
                       <th>Empleado</th>
                       <th>Empresa / Sector</th>
+                      <th>Convenio</th>
                       <th class="text-center">Días trab.</th>
                       <th class="text-center">Horas totales</th>
                       <th class="text-center">Prom. por día</th>
+                      <th class="text-center">Novedades</th>
                       <th class="text-center">Sin cierre</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody id="reg-res-tbody">
-                    <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted">Cargando...</td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
             <p class="text-small text-muted" style="margin-top:.5rem">
-              ℹ️ Haga clic en una fila para ver el detalle día por día. El conteo exacto de <strong>ausencias</strong> se calcula automáticamente cuando el cronograma (roster) esté cargado — mientras tanto, use la vista 🗓️ Calendario para ver los días sin registro.
+              ℹ️ Haga clic en una fila para ver el detalle día por día. <strong>P</strong> (presente) se genera solo con las fichadas; las novedades (V, LC, EC, EB, PM, D) se marcan desde la vista 🗓️ Calendario haciendo clic en el día.
             </p>
           </div>
 
@@ -488,7 +523,12 @@
               </div>
             </div>
             <p class="text-small text-muted" style="margin-top:.5rem">
-              🟩 día con asistencia (el número indica horas trabajadas) · ⬜ sin registro · columna sombreada = fin de semana
+              🟩 día con asistencia (número = horas) · <span class="nov-dot nov-D"></span>D descanso ·
+              <span class="nov-dot nov-V"></span>V vacaciones · <span class="nov-dot nov-LC"></span>LC licencia ·
+              <span class="nov-dot nov-EC"></span>EC extra campamento · <span class="nov-dot nov-EB"></span>EB extra base ·
+              <span class="nov-dot nov-PM"></span>PM parte médico · <span class="nov-dot nov-AJ"></span>AJ/AI ausencia ·
+              ⬜ sin registro · columna sombreada = fin de semana.
+              <strong>Haga clic en un día</strong> para marcar o editar una novedad.
             </p>
           </div>
 
@@ -640,12 +680,118 @@
             </form>
           </div>
 
+          <!-- Datos demo para mostrar el prototipo -->
+          <div class="add-emp-form" style="margin-top:1.5rem">
+            <h3 style="font-weight:700;margin-bottom:1rem">🎭 Datos de demostración</h3>
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1.25rem">
+              Crea 2 empleados inventados (Carlos Pérez y María Gómez) con fichadas de entrada/salida
+              del mes anterior y del mes actual, más novedades. Ideal para mostrar el prototipo.
+              Si ya existen, primero borralos y volvé a generarlos.
+            </p>
+            <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+              <button id="btn-generar-demo" class="btn btn-primary">✨ Generar datos demo</button>
+              <button id="btn-borrar-demo" class="btn btn-outline">🗑️ Borrar datos demo</button>
+            </div>
+            <div id="msg-demo" style="margin-top:.75rem"></div>
+          </div>
+
+        </div>
+
+        <!-- ==============================
+             TAB: ADMINISTRADORES
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="admins">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Administradores del sistema</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Administrador</th>
+                    <th>Sector</th>
+                    <th>Contraseña</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="adm-tbody">
+                  <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Designar nuevo administrador -->
+          <div class="add-emp-form">
+            <h3 style="font-weight:700;margin-bottom:1.25rem">🛡️ Designar nuevo administrador</h3>
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1.25rem">
+              Seleccione un empleado de la nómina y asígnele una contraseña. Esa persona podrá
+              ingresar al panel con su cuenta Google + esta contraseña, y tendrá acceso completo
+              (empleados, vehículos, empresas, reportes).
+            </p>
+            <form id="form-agregar-admin" novalidate>
+              <div class="form-group">
+                <label class="form-label">Empleado *</label>
+                <select id="adm-email" class="form-input" required>
+                  <option value="">Cargando nómina...</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Contraseña * (mín. 8 caracteres)</label>
+                  <input type="password" id="adm-pass" class="form-input" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Repetir contraseña *</label>
+                  <input type="password" id="adm-pass2" class="form-input" autocomplete="new-password" placeholder="Repetir" />
+                </div>
+              </div>
+              <div id="msg-agregar-admin"></div>
+              <button type="submit" class="btn btn-primary btn-full" style="margin-top:.5rem">
+                Designar administrador
+              </button>
+            </form>
+          </div>
+
+          <!-- Modal: cambiar contraseña de un admin -->
+          <div id="adm-clave-overlay" class="op-modal-overlay hidden">
+            <div class="op-modal" role="dialog" aria-modal="true">
+              <div class="op-modal-header">
+                <h3>Cambiar contraseña</h3>
+                <button type="button" id="adm-clave-close" class="op-modal-close" aria-label="Cerrar">×</button>
+              </div>
+              <div class="op-modal-body">
+                <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">
+                  Administrador: <strong id="adm-clave-email-label">—</strong>
+                </p>
+                <form id="adm-clave-form" novalidate>
+                  <input type="hidden" id="adm-clave-email" />
+                  <div class="form-group">
+                    <label class="form-label">Nueva contraseña * (mín. 8 caracteres)</label>
+                    <input type="password" id="adm-clave-pass" class="form-input" autocomplete="new-password" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Repetir contraseña *</label>
+                    <input type="password" id="adm-clave-pass2" class="form-input" autocomplete="new-password" />
+                  </div>
+                  <div id="adm-clave-msg"></div>
+                  <div class="op-modal-footer" style="padding:0;border:none;margin-top:1rem">
+                    <button type="button" id="adm-clave-cancel" class="btn btn-outline">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">💾 Guardar</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- ==============================
              TAB: OPERACIÓN / HABILITACIONES
              ============================== -->
-        <div class="tab-pane hidden" data-tab-pane="operacion">
+        <div class="tab-pane hidden" data-tab-pane="operacion" data-variante="mineria">
 
           <div class="stats-grid" id="op-stats">
             <div class="stat-card">
@@ -728,7 +874,7 @@
         <!-- ==============================
              TAB: REEMPLAZOS
              ============================== -->
-        <div class="tab-pane hidden" data-tab-pane="reemplazos">
+        <div class="tab-pane hidden" data-tab-pane="reemplazos" data-variante="mineria">
 
           <div class="table-container" style="margin-bottom:1.5rem">
             <div class="table-header">
@@ -869,7 +1015,7 @@
         <!-- ==============================
              TAB: VEHÍCULOS
              ============================== -->
-        <div class="tab-pane hidden" data-tab-pane="vehiculos">
+        <div class="tab-pane hidden" data-tab-pane="vehiculos" data-variante="mineria">
 
           <div class="table-container" style="margin-bottom:1.5rem">
             <div class="table-header">
@@ -1044,6 +1190,24 @@
             </div>
           </div>
         </div>
+        <!-- ==============================
+             MODAL DE NOVEDAD (pestaña Asistencias)
+             ============================== -->
+        <div id="reg-modal-overlay" class="op-modal-overlay hidden">
+          <div class="op-modal" role="dialog" aria-modal="true">
+            <div class="op-modal-header">
+              <h3 id="reg-modal-title">Novedad</h3>
+              <button type="button" id="reg-modal-close" class="op-modal-close" aria-label="Cerrar">×</button>
+            </div>
+            <div class="op-modal-body" id="reg-modal-body"></div>
+            <div id="reg-modal-msg"></div>
+            <div class="op-modal-footer">
+              <button type="button" id="reg-modal-cancel" class="btn btn-outline">Cancelar</button>
+              <button type="button" id="reg-modal-delete" class="btn btn-danger hidden">🗑️ Quitar novedad</button>
+              <button type="button" id="reg-modal-save" class="btn btn-primary">💾 Guardar</button>
+            </div>
+          </div>
+        </div>
         <!-- /tabs -->
 
       </div><!-- /.admin-content -->
@@ -1089,6 +1253,7 @@
     records:       'Asistencias',
     reports:       'Informes',
     settings:      'Configuración',
+    admins:        'Administradores',
     operacion:     'Habilitaciones',
     reemplazos:    'Reemplazos',
     observaciones: 'Observaciones',

@@ -15,8 +15,14 @@ window.APP_CONFIG = {
   // Formato: https://script.google.com/macros/s/XXXXXXXX/exec
   GAS_URL: 'https://script.google.com/macros/s/AKfycbwRbNIB7tMNAGmMNoRIiViS4WW35AV58MnPAvYOyyJl4n87CU7SmxggJ-pGuNrGqiXZ/exec',
 
-  // Nombre del establecimiento (aparece en la pantalla)
-  APP_NAME: 'Control de Acceso',
+  // Nombre del producto (aparece en la pantalla y en el título de la pestaña)
+  APP_NAME: 'Control Personal para Proveedores Mineros',
+
+  // Variante del producto:
+  //   'mineria' → todos los módulos (incluye Habilitaciones, Reemplazos, Vehículos)
+  //   'general' → edición para colegios, comercios y empresas en general
+  //               (oculta Habilitaciones, Reemplazos y Vehículos)
+  VARIANTE: 'mineria',
 
   // Segundos de countdown antes de cerrar la pantalla del empleado
   AUTO_CLOSE_DELAY: 5000,

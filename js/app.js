@@ -90,9 +90,10 @@ const App = (() => {
   async function init() {
     _initInactivity();
 
-    // Aplicar nombre de empresa desde config
+    // Aplicar nombre del producto desde config (pantallas + pestaña del navegador)
     const appName = (window.APP_CONFIG || {}).APP_NAME || 'Control de Acceso';
-    ['loading-app-name', 'signin-app-title'].forEach(id => setText(id, appName));
+    ['loading-app-name', 'signin-app-title', 'sidebar-logo-title'].forEach(id => setText(id, appName));
+    document.title = appName;
 
     setLoading('Iniciando aplicación...', 'Cargando sistema');
 

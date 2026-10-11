@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#4F46E5" />
+  <meta name="description" content="Sistema de control de acceso de personal" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Acceso" />
+
+  <title>Control de Acceso</title>
+
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/css/style.css" />
+
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- ============================================================
+     EMPLOYEE APP (default view) — Premium Design
+     ============================================================ -->
+<div id="employee-app">
+
+  <!-- ---- LOADING ---- -->
+  <div id="view-loading" class="view">
+    <div class="emp-brand">
+      <div class="emp-brand-icon">🏢</div>
+      <div class="emp-brand-name" id="loading-app-name">Control de Acceso</div>
+    </div>
+    <div class="glass-card" style="text-align:center;max-width:320px">
+      <div class="loading-ring"></div>
+      <p id="loading-text" class="loading-text">Iniciando...</p>
+      <div class="loading-step" id="loading-step" style="display:none">
+        <span id="loading-step-txt"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- SIGN IN ---- -->
+  <div id="view-signin" class="view hidden">
+    <div class="emp-brand">
+      <div class="emp-brand-icon">🏢</div>
+      <div class="emp-brand-name" id="signin-app-title">Control de Acceso</div>
+      <div class="emp-brand-sub">Sistema de registro de acceso</div>
+    </div>
+    <div class="glass-card">
+      <h2 class="signin-title">¡Bienvenido!</h2>
+      <p class="signin-sub">Inicie sesión con su cuenta Google para registrar su entrada o salida.</p>
+      <div class="signin-divider">Autenticación segura</div>
+      <div id="google-btn-container"></div>
+      <p class="signin-note">Su email se usa únicamente para identificarlo en el sistema. Nunca compartimos sus datos.</p>
+    </div>
+  </div>
+
+  <!-- ---- CONFIRM ---- -->
+  <div id="view-confirm" class="view hidden">
+    <div class="glass-card" style="text-align:center">
+      <div class="confirm-avatar" id="confirm-avatar">—</div>
+      <div class="confirm-name" id="confirm-nombre">—</div>
+      <div class="confirm-meta">
+        <span class="confirm-meta-pill" id="confirm-sector-pill">—</span>
+        <span class="confirm-meta-pill" id="confirm-turno-pill" style="display:none">—</span>
+      </div>
+      <div style="display:flex;justify-content:center;margin-bottom:1.5rem">
+        <span id="confirm-estado-badge" class="estado-badge badge-fuera">FUERA</span>
+      </div>
+
+      <div class="confirm-live-time" id="confirm-live-time">--:--:--</div>
+
+      <div class="confirm-actions">
+        <button id="btn-confirmar" class="btn btn-success btn-lg btn-full">
+          📥 Registrar ENTRADA
+        </button>
+        <button id="btn-cancelar" class="btn btn-ghost btn-full">
+          Cancelar / Cambiar cuenta
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- SUCCESS ---- -->
+  <div id="view-success" class="view hidden">
+    <div class="glass-card" style="text-align:center">
+
+      <div class="success-icon-wrap success-icon-ingreso" id="success-icon-wrap">
+        <span id="success-icon">✅</span>
+      </div>
+
+      <h2 class="success-titulo" id="success-titulo">¡Registrado!</h2>
+      <p class="success-nombre" id="success-nombre">—</p>
+
+      <div style="display:flex;justify-content:center;margin-bottom:1rem">
+        <span class="success-sector-tag" id="success-sector">—</span>
+      </div>
+
+      <div class="success-time-display">
+        <div class="success-hora" id="success-hora">00:00:00</div>
+        <div class="success-fecha-dia" id="success-fecha">—</div>
+      </div>
+
+      <div id="success-duracion-container" class="hidden" style="display:flex;justify-content:center;margin-bottom:.25rem">
+        <div class="success-duracion-pill">
+          <span>⏱</span>
+          <span>Tiempo en empresa:</span>
+          <strong id="success-duracion">0h 0m</strong>
+        </div>
+      </div>
+
+      <div class="countdown-bar-wrap">
+        <div class="countdown-label">
+          Volviendo al inicio en
+          <span class="countdown-num-badge" id="countdown">5</span>
+          seg
+        </div>
+        <div class="countdown-track">
+          <div class="countdown-fill" id="countdown-fill" style="width:100%"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ---- GOODBYE ---- -->
+  <div id="view-goodbye" class="view goodbye-view hidden">
+    <div class="glass-card" style="text-align:center">
+      <div style="font-size:3rem;margin-bottom:1rem">✅</div>
+      <h2 style="font-size:1.4rem;font-weight:800;color:#fff;margin-bottom:.5rem">¡Acceso registrado!</h2>
+      <p style="color:rgba(255,255,255,.55);margin-bottom:1.5rem;font-size:.9rem">Su movimiento fue registrado correctamente.</p>
+      <button onclick="Auth.signOut(); window.location.reload()" class="btn btn-ghost btn-full">
+        Nuevo registro
+      </button>
+    </div>
+  </div>
+
+  <!-- ---- ERROR ---- -->
+  <div id="view-error" class="view hidden">
+    <div class="glass-card">
+      <div class="error-icon">⚠️</div>
+      <h2 class="error-title" id="error-title">Error</h2>
+      <p class="error-msg" id="error-msg">Ha ocurrido un error.</p>
+      <div style="display:flex;flex-direction:column;gap:.75rem">
+        <button id="btn-retry" class="btn btn-primary btn-full btn-lg" onclick="window.location.reload()">
+          🔄 Reintentar
+        </button>
+        <button class="btn btn-ghost btn-full" onclick="Auth.signOut(); window.location.reload()">
+          Cerrar sesión y reintentar
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /#employee-app -->
+
+
+<!-- ============================================================
+     ADMIN APP
+     ============================================================ -->
+<div id="admin-app" class="hidden">
+
+  <!-- Admin Loading -->
+  <div id="admin-loading">
+    <div class="spinner"></div>
+    <p class="loading-text">Cargando panel...</p>
+  </div>
+
+  <!-- Admin Login -->
+  <div id="admin-login" class="hidden">
+    <div class="card" style="max-width:380px;width:100%">
+      <div class="card-icon">🛡️</div>
+      <h2 class="card-title">Panel de Administración</h2>
+      <p class="card-subtitle">Acceso exclusivo para administradores del sistema.</p>
+      <div id="admin-google-btn"></div>
+      <p style="margin-top:1rem;font-size:.8rem;text-align:center;color:var(--text-muted)">
+        Solo emails marcados como administradores en la planilla podrán ingresar.
+      </p>
+    </div>
+  </div>
+
+  <!-- Admin Error -->
+  <div id="admin-error" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1.5rem">
+    <div class="card" style="max-width:400px;width:100%;text-align:center">
+      <div style="font-size:3rem;margin-bottom:1rem">🔒</div>
+      <h2 style="color:var(--danger);margin-bottom:.5rem">Acceso denegado</h2>
+      <p id="admin-error-msg" style="color:var(--text-muted);font-size:.9rem;margin-bottom:1.5rem">Sin permisos.</p>
+      <button onclick="Auth.signOut();window.location.reload()" class="btn btn-primary">
+        Intentar con otra cuenta
+      </button>
+    </div>
+  </div>
+
+  <!-- Admin Contraseña (segundo factor después de Google) -->
+  <div id="admin-pass" class="hidden" style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1.5rem">
+    <div class="card" style="max-width:400px;width:100%">
+      <div class="card-icon">🔑</div>
+      <h2 class="card-title">Confirmar identidad</h2>
+      <p class="card-subtitle">Ingresó como <strong id="admin-pass-email" style="color:var(--primary)"></strong>.<br/>Por seguridad, confirme su contraseña de administrador.</p>
+      <form id="admin-pass-form">
+        <div class="form-group">
+          <label class="form-label" for="admin-pass-input">Contraseña de administrador</label>
+          <input type="password" id="admin-pass-input" class="form-input" placeholder="••••••••" autocomplete="current-password" required />
+        </div>
+        <div id="admin-pass-msg"></div>
+        <button type="submit" id="admin-pass-btn" class="btn btn-primary" style="width:100%">Ingresar al panel</button>
+      </form>
+      <button onclick="Auth.signOut();window.location.reload()" class="btn btn-outline" style="width:100%;margin-top:.6rem">Usar otra cuenta</button>
+    </div>
+  </div>
+
+  <!-- Admin Dashboard -->
+  <div id="admin-dashboard" class="hidden admin-layout">
+
+    <!-- Sidebar overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="admin-sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">🏢</div>
+        <div class="sidebar-logo-title">Control de Acceso</div>
+        <div class="sidebar-logo-sub">Panel Administrativo</div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item tab-active" data-tab="overview">
+          <span class="nav-item-icon">📊</span> Vista general
+        </button>
+        <button class="nav-item" data-tab="employees">
+          <span class="nav-item-icon">👥</span> Empleados
+        </button>
+        <button class="nav-item" data-tab="records">
+          <span class="nav-item-icon">📋</span> Asistencias
+        </button>
+        <button class="nav-item" data-tab="reports">
+          <span class="nav-item-icon">📈</span> Informes
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <span class="nav-item-icon">⚙️</span> Configuración
+        </button>
+        <button class="nav-item" data-tab="admins">
+          <span class="nav-item-icon">🛡️</span> Administradores
+        </button>
+
+        <div class="nav-section-label">OPERACIÓN</div>
+        <button class="nav-item" data-tab="operacion" data-variante="mineria">
+          <span class="nav-item-icon">🦺</span> Habilitaciones
+        </button>
+        <button class="nav-item" data-tab="reemplazos" data-variante="mineria">
+          <span class="nav-item-icon">🔄</span> Reemplazos
+        </button>
+        <button class="nav-item" data-tab="observaciones">
+          <span class="nav-item-icon">⚠️</span> Observaciones
+        </button>
+        <button class="nav-item" data-tab="vehiculos" data-variante="mineria">
+          <span class="nav-item-icon">🚚</span> Vehículos
+        </button>
+        <button class="nav-item" data-tab="empresas">
+          <span class="nav-item-icon">🏭</span> Empresas
+        </button>
+        <button class="nav-item" data-tab="trazabilidad">
+          <span class="nav-item-icon">🔍</span> Trazabilidad
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="sidebar-avatar">
+            <img id="admin-avatar" src="" alt="" onerror="this.style.display='none'" />
+          </div>
+          <div>
+            <div class="sidebar-user-name" id="admin-user-name">—</div>
+            <div class="sidebar-user-email" id="admin-user-email">—</div>
+          </div>
+        </div>
+        <button onclick="Auth.signOut();window.location.reload()" class="btn btn-sm btn-ghost" style="width:100%;color:rgba(255,255,255,.6)">
+          Cerrar sesión
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div style="display:flex;align-items:center;gap:1rem">
+          <button class="btn-menu" onclick="toggleSidebar()">☰</button>
+          <h1 class="admin-topbar-title" id="topbar-title">Vista General</h1>
+        </div>
+        <button onclick="Dashboard.refresh()" class="btn btn-sm btn-outline">
+          🔄 Actualizar
+        </button>
+      </header>
+
+      <div class="admin-content">
+
+        <!-- ==============================
+             TAB: OVERVIEW
+             ============================== -->
+        <div class="tab-pane" data-tab-pane="overview">
+          <p style="color:var(--text-muted);font-size:.875rem;margin-bottom:1rem" id="ov-fecha">Hoy</p>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value" id="ov-dentro">—</div>
+              <div class="stat-label">Dentro ahora</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="ov-fuera">—</div>
+              <div class="stat-label">Fuera / Ausentes</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="ov-total">—</div>
+              <div class="stat-label">Empleados activos</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="ov-hoy">—</div>
+              <div class="stat-label">Registros hoy</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="ov-abiertos">—</div>
+              <div class="stat-label">Ingresos sin salida</div>
+            </div>
+          </div>
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Empleados presentes</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empleado</th>
+                    <th>Sector</th>
+                    <th>Turno</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-presentes-tbody">
+                  <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Últimos registros de hoy</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empleado</th>
+                    <th>Sector</th>
+                    <th>Ingreso</th>
+                    <th>Egreso</th>
+                    <th>Tiempo</th>
+                  </tr>
+                </thead>
+                <tbody id="ov-registros-tbody">
+                  <tr><td colspan="5" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: EMPLOYEES
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="employees">
+
+          <div class="filters-bar" style="margin-bottom:1rem">
+            <input type="text" id="emp-search" class="form-input" placeholder="🔍 Buscar por nombre, email o sector..." style="flex:1;min-width:220px" />
+          </div>
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Lista de empleados</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empleado</th>
+                    <th>Sector</th>
+                    <th>Turno</th>
+                    <th>Estado</th>
+                    <th>Activo</th>
+                    <th>Dispositivo</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="emp-tbody">
+                  <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Agregar empleado -->
+          <div class="add-emp-form">
+            <h3 style="font-weight:700;margin-bottom:1.25rem">➕ Agregar empleado</h3>
+            <form id="form-agregar-empleado" novalidate>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Nombre *</label>
+                  <input type="text" name="nombre" class="form-input" required placeholder="Ana" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Apellido *</label>
+                  <input type="text" name="apellido" class="form-input" required placeholder="García" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Email Google *</label>
+                <input type="email" name="email" class="form-input" required placeholder="ana.garcia@gmail.com" />
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Sector</label>
+                  <input type="text" name="sector" class="form-input" placeholder="RRHH, Ventas..." />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Turno</label>
+                  <input type="text" name="turno" class="form-input" placeholder="Mañana, Tarde..." />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-check">
+                  <input type="checkbox" name="esAdmin" id="chk-esadmin" />
+                  Es administrador del sistema
+                </label>
+              </div>
+              <div class="form-group" id="emp-admin-pass-group" style="display:none">
+                <label class="form-label">Contraseña de administrador * (mín. 8 caracteres)</label>
+                <input type="password" name="adminPassword" class="form-input" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
+                <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">
+                  La persona ingresará al panel con su cuenta Google + esta contraseña.
+                </p>
+              </div>
+              <div id="msg-agregar"></div>
+              <button type="submit" class="btn btn-primary btn-full" style="margin-top:.5rem">
+                Agregar empleado
+              </button>
+            </form>
+          </div>
+
+        </div>
+
+        <!-- ==============================
+             TAB: RECORDS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="records">
+
+          <!-- Barra de control: mes + período + vista + búsqueda + export -->
+          <div class="filters-bar">
+            <input type="month" id="reg-mes" class="form-input" title="Mes a consultar" style="width:165px" />
+            <select id="reg-periodo" class="form-input" title="Período de cierre (UOCRA quincenal · AOMA/fuera de convenio mensual)" style="width:170px">
+              <option value="mes">Mes completo</option>
+              <option value="q1">1ª quincena (1-15)</option>
+              <option value="q2">2ª quincena (16-fin)</option>
+            </select>
+            <div class="seg-toggle" id="reg-vista-toggle">
+              <button type="button" data-vista="resumen" class="seg-btn seg-active">📊 Resumen</button>
+              <button type="button" data-vista="calendario" class="seg-btn">🗓️ Calendario</button>
+              <button type="button" data-vista="detalle" class="seg-btn">📋 Detalle</button>
+            </div>
+            <input type="text" id="reg-buscar" class="form-input" placeholder="🔍 Buscar empleado..." style="flex:1;min-width:150px" />
+            <button id="btn-export-reg" class="btn btn-outline btn-sm">⬇️ Exportar CSV</button>
+          </div>
+
+          <!-- VISTA: RESUMEN MENSUAL (default) -->
+          <div id="reg-view-resumen">
+            <div class="table-container">
+              <div class="table-header">
+                <span class="table-title">Resumen por empleado</span>
+                <span id="reg-count" class="text-small text-muted"></span>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Empleado</th>
+                      <th>Empresa / Sector</th>
+                      <th>Convenio</th>
+                      <th class="text-center">Días trab.</th>
+                      <th class="text-center">Horas totales</th>
+                      <th class="text-center">Prom. por día</th>
+                      <th class="text-center">Novedades</th>
+                      <th class="text-center">Sin cierre</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="reg-res-tbody">
+                    <tr><td colspan="9" class="text-center text-muted">Cargando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <p class="text-small text-muted" style="margin-top:.5rem">
+              ℹ️ Haga clic en una fila para ver el detalle día por día. <strong>P</strong> (presente) se genera solo con las fichadas; las novedades (V, LC, EC, EB, PM, D) se marcan desde la vista 🗓️ Calendario haciendo clic en el día.
+            </p>
+          </div>
+
+          <!-- VISTA: CALENDARIO -->
+          <div id="reg-view-calendario" class="hidden">
+            <div class="table-container">
+              <div class="table-header">
+                <span class="table-title">Calendario de asistencia del mes</span>
+                <span id="reg-cal-legend" class="text-small text-muted"></span>
+              </div>
+              <div style="overflow-x:auto">
+                <table class="cal-table" id="reg-cal-table">
+                  <thead id="reg-cal-thead"></thead>
+                  <tbody id="reg-cal-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+            <p class="text-small text-muted" style="margin-top:.5rem">
+              🟩 día con asistencia (número = horas) · <span class="nov-dot nov-D"></span>D descanso ·
+              <span class="nov-dot nov-V"></span>V vacaciones · <span class="nov-dot nov-LC"></span>LC licencia ·
+              <span class="nov-dot nov-EC"></span>EC extra campamento · <span class="nov-dot nov-EB"></span>EB extra base ·
+              <span class="nov-dot nov-PM"></span>PM parte médico · <span class="nov-dot nov-AJ"></span>AJ/AI ausencia ·
+              ⬜ sin registro · columna sombreada = fin de semana.
+              <strong>Haga clic en un día</strong> para marcar o editar una novedad.
+            </p>
+          </div>
+
+          <!-- VISTA: DETALLE (lista completa) -->
+          <div id="reg-view-detalle" class="hidden">
+            <div class="filters-bar" style="margin-bottom:1rem">
+              <input type="email" id="reg-f-email" class="form-input" placeholder="Filtrar por email" style="flex:1;min-width:180px" />
+              <input type="text" id="reg-f-sector" class="form-input" placeholder="Sector" style="width:140px" />
+              <input type="date" id="reg-f-desde" class="form-input" title="Desde" />
+              <input type="date" id="reg-f-hasta" class="form-input" title="Hasta" />
+            </div>
+
+            <div class="table-container">
+              <div class="table-header">
+                <span class="table-title">Asistencias registradas (entrada y salida)</span>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Empleado</th>
+                      <th>Ingreso</th>
+                      <th>Egreso</th>
+                      <th>Duración</th>
+                      <th>Día</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reg-tbody">
+                    <tr><td colspan="6" class="text-center text-muted">Sin datos</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: REPORTS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="reports">
+
+          <div class="informe-controls">
+            <div class="form-group" style="margin:0;flex:1;min-width:200px">
+              <label class="form-label">Período</label>
+              <select id="inf-periodo" class="form-select" style="width:100%">
+                <option value="q1">1ra Quincena (1–15)</option>
+                <option value="q2">2da Quincena (16–fin)</option>
+                <option value="mensual">Mensual completo</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0;flex:2;min-width:220px">
+              <label class="form-label">Empleado (dejar vacío = todos)</label>
+              <select id="inf-empleado" class="form-select" style="width:100%">
+                <option value="">— Todos los empleados —</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:flex-end">
+              <button id="btn-generar-informe" class="btn btn-primary">
+                📊 Generar informe
+              </button>
+            </div>
+          </div>
+
+          <div id="inf-loader" class="hidden" style="text-align:center;padding:2rem">
+            <div class="spinner"></div>
+            <p class="text-muted">Generando informe...</p>
+          </div>
+
+          <div id="inf-resultado" class="hidden">
+            <div class="table-container">
+              <div class="table-header">
+                <span class="table-title" id="inf-titulo-resultado">Informe</span>
+                <button id="btn-export-inf" class="btn btn-outline btn-sm">⬇️ Exportar CSV</button>
+              </div>
+              <div style="overflow-x:auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Empleado</th>
+                      <th>Días</th>
+                      <th>Total</th>
+                      <th>Horas</th>
+                      <th>Promedio/día</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="inf-tbody">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ==============================
+             TAB: SETTINGS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="settings">
+
+          <div class="config-form">
+            <h3 style="font-weight:700;margin-bottom:1.25rem">⚙️ Configuración del sistema</h3>
+            <form id="form-config" novalidate>
+
+              <div class="form-group">
+                <label class="form-label">Nombre del establecimiento</label>
+                <input type="text" id="cfg-nombre-empresa" class="form-input" placeholder="Mi Empresa" />
+              </div>
+
+              <hr style="border:none;border-top:1px solid var(--border);margin:1.5rem 0" />
+
+              <h4 style="font-weight:600;margin-bottom:1rem">📍 Geofencing (control de ubicación)</h4>
+
+              <div style="margin-bottom:1rem">
+                <button type="button" id="btn-get-gps" class="btn btn-outline btn-sm">
+                  📍 Usar mi ubicación actual como centro del geofence
+                </button>
+                <p style="font-size:.8rem;color:var(--text-muted);margin-top:.4rem">
+                  Haga clic desde el establecimiento para capturar las coordenadas exactas.
+                </p>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Latitud</label>
+                  <input type="number" id="cfg-lat" class="form-input" placeholder="-34.603722" step="any" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Longitud</label>
+                  <input type="number" id="cfg-lng" class="form-input" placeholder="-58.381592" step="any" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Radio permitido (metros)</label>
+                <input type="number" id="cfg-radio" class="form-input" placeholder="200" min="50" max="2000" />
+                <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">
+                  Recomendado: 100–300m según el tamaño del establecimiento.
+                  Dejar la latitud/longitud vacías desactiva el geofencing.
+                </p>
+              </div>
+
+              <div id="cfg-msg"></div>
+
+              <button type="submit" class="btn btn-primary btn-full" style="margin-top:.75rem">
+                💾 Guardar configuración
+              </button>
+            </form>
+          </div>
+
+          <!-- Datos demo para mostrar el prototipo -->
+          <div class="add-emp-form" style="margin-top:1.5rem">
+            <h3 style="font-weight:700;margin-bottom:1rem">🎭 Datos de demostración</h3>
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1.25rem">
+              Crea 2 empleados inventados (Carlos Pérez y María Gómez) con fichadas de entrada/salida
+              del mes anterior y del mes actual, más novedades. Ideal para mostrar el prototipo.
+              Si ya existen, primero borralos y volvé a generarlos.
+            </p>
+            <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+              <button id="btn-generar-demo" class="btn btn-primary">✨ Generar datos demo</button>
+              <button id="btn-borrar-demo" class="btn btn-outline">🗑️ Borrar datos demo</button>
+            </div>
+            <div id="msg-demo" style="margin-top:.75rem"></div>
+          </div>
+
+        </div>
+
+        <!-- ==============================
+             TAB: ADMINISTRADORES
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="admins">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Administradores del sistema</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Administrador</th>
+                    <th>Sector</th>
+                    <th>Contraseña</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="adm-tbody">
+                  <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Designar nuevo administrador -->
+          <div class="add-emp-form">
+            <h3 style="font-weight:700;margin-bottom:1.25rem">🛡️ Designar nuevo administrador</h3>
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1.25rem">
+              Seleccione un empleado de la nómina y asígnele una contraseña. Esa persona podrá
+              ingresar al panel con su cuenta Google + esta contraseña, y tendrá acceso completo
+              (empleados, vehículos, empresas, reportes).
+            </p>
+            <form id="form-agregar-admin" novalidate>
+              <div class="form-group">
+                <label class="form-label">Empleado *</label>
+                <select id="adm-email" class="form-input" required>
+                  <option value="">Cargando nómina...</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Contraseña * (mín. 8 caracteres)</label>
+                  <input type="password" id="adm-pass" class="form-input" autocomplete="new-password" placeholder="Mínimo 8 caracteres" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Repetir contraseña *</label>
+                  <input type="password" id="adm-pass2" class="form-input" autocomplete="new-password" placeholder="Repetir" />
+                </div>
+              </div>
+              <div id="msg-agregar-admin"></div>
+              <button type="submit" class="btn btn-primary btn-full" style="margin-top:.5rem">
+                Designar administrador
+              </button>
+            </form>
+          </div>
+
+          <!-- Modal: cambiar contraseña de un admin -->
+          <div id="adm-clave-overlay" class="op-modal-overlay hidden">
+            <div class="op-modal" role="dialog" aria-modal="true">
+              <div class="op-modal-header">
+                <h3>Cambiar contraseña</h3>
+                <button type="button" id="adm-clave-close" class="op-modal-close" aria-label="Cerrar">×</button>
+              </div>
+              <div class="op-modal-body">
+                <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:1rem">
+                  Administrador: <strong id="adm-clave-email-label">—</strong>
+                </p>
+                <form id="adm-clave-form" novalidate>
+                  <input type="hidden" id="adm-clave-email" />
+                  <div class="form-group">
+                    <label class="form-label">Nueva contraseña * (mín. 8 caracteres)</label>
+                    <input type="password" id="adm-clave-pass" class="form-input" autocomplete="new-password" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Repetir contraseña *</label>
+                    <input type="password" id="adm-clave-pass2" class="form-input" autocomplete="new-password" />
+                  </div>
+                  <div id="adm-clave-msg"></div>
+                  <div class="op-modal-footer" style="padding:0;border:none;margin-top:1rem">
+                    <button type="button" id="adm-clave-cancel" class="btn btn-outline">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">💾 Guardar</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ==============================
+             TAB: OPERACIÓN / HABILITACIONES
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="operacion" data-variante="mineria">
+
+          <div class="stats-grid" id="op-stats">
+            <div class="stat-card">
+              <div class="stat-value" id="op-total">—</div>
+              <div class="stat-label">Personal activo</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="op-habilitados">—</div>
+              <div class="stat-label">Habilitados</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="op-observados">—</div>
+              <div class="stat-label">Observados</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="op-bloqueados">—</div>
+              <div class="stat-label">Bloqueados</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="op-docs">—</div>
+              <div class="stat-label">Docs por vencer / vencidos</div>
+            </div>
+          </div>
+
+          <!-- Panel de observación rápida sobre un empleado -->
+          <div id="obs-emp-panel" class="hidden" style="background:var(--gray-50);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1.25rem">
+            <h4 id="obs-emp-titulo" style="font-weight:700;margin-bottom:.75rem">Observación</h4>
+            <form id="form-obs-empleado" novalidate>
+              <input type="hidden" id="obs-emp-email" value="" />
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Severidad</label>
+                  <select id="obs-emp-sev" class="form-input">
+                    <option value="observado">Observado</option>
+                    <option value="bloqueado">Bloqueado (impide fichar)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Descripción</label>
+                  <input type="text" id="obs-emp-desc" class="form-input" placeholder="Motivo de la observación..." />
+                </div>
+              </div>
+              <div id="obs-emp-msg"></div>
+              <div style="display:flex;gap:.5rem;margin-top:.5rem">
+                <button type="submit" class="btn btn-primary btn-sm">💾 Registrar</button>
+                <button type="button" data-op="cerrarObsEmp" class="btn btn-outline btn-sm">Cancelar</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="filters-bar" style="margin-bottom:1rem">
+            <input type="text" id="hab-search" data-op="busquedaHab" class="form-input" placeholder="🔍 Buscar por nombre, empresa o sector..." style="flex:1;min-width:220px" />
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Habilitaciones del personal</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empleado</th>
+                    <th>Empresa</th>
+                    <th>Sector</th>
+                    <th>Apto médico</th>
+                    <th>Licencia</th>
+                    <th>Habilitación</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="hab-tbody">
+                  <tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: REEMPLAZOS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="reemplazos" data-variante="mineria">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Registrar ausencia</span>
+            </div>
+            <form id="form-reemplazo" novalidate style="padding:1.25rem">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Empleado ausente</label>
+                  <select id="rem-ausente" class="form-input"></select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Turno</label>
+                  <input type="text" id="rem-turno" class="form-input" placeholder="Ej: 12h día" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Causa</label>
+                  <input type="text" id="rem-causa" class="form-input" placeholder="Ej: Licencia médica" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Candidato 1</label>
+                  <input type="text" id="rem-cand1" class="form-input" placeholder="Nombre del reemplazo" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Candidato 2</label>
+                  <input type="text" id="rem-cand2" class="form-input" placeholder="Opcional" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Candidato 3</label>
+                  <input type="text" id="rem-cand3" class="form-input" placeholder="Opcional" />
+                </div>
+              </div>
+              <label style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">
+                <input type="checkbox" id="rem-urgente" /> <span style="font-size:.85rem">Cubertura urgente</span>
+              </label>
+              <div id="rem-msg"></div>
+              <button type="submit" class="btn btn-primary">💾 Registrar ausencia</button>
+            </form>
+          </div>
+
+          <div id="rem-lista">
+            <p class="text-muted">Cargando...</p>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: OBSERVACIONES + ALERTAS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="observaciones">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Nueva observación</span>
+            </div>
+            <form id="form-observacion" novalidate style="padding:1.25rem">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Tipo</label>
+                  <select id="obs-tipo" class="form-input">
+                    <option value="Personal">Personal</option>
+                    <option value="Vehículo">Vehículo</option>
+                    <option value="Empresa">Empresa</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Entidad</label>
+                  <input type="text" id="obs-entidad" class="form-input" list="obs-entidades" placeholder="A quién/qué corresponde" />
+                  <datalist id="obs-entidades"></datalist>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Empresa</label>
+                  <select id="obs-empresa" class="form-input"></select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Severidad</label>
+                  <select id="obs-sev" class="form-input">
+                    <option value="observado">Observado</option>
+                    <option value="bloqueado">Bloqueado</option>
+                  </select>
+                </div>
+                <div class="form-group" style="flex:3">
+                  <label class="form-label">Descripción</label>
+                  <input type="text" id="obs-desc" class="form-input" placeholder="Detalle de la observación..." />
+                </div>
+              </div>
+              <div id="obs-msg"></div>
+              <button type="submit" class="btn btn-primary">💾 Registrar observación</button>
+            </form>
+          </div>
+
+          <div class="filters-bar" style="margin-bottom:1rem">
+            <input type="text" id="obs-search" data-op="busquedaObs" class="form-input" placeholder="🔍 Buscar observaciones..." style="flex:1;min-width:220px" />
+            <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem">
+              <input type="checkbox" id="obs-solo-pend" data-op="busquedaObs" /> Solo pendientes
+            </label>
+          </div>
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Observaciones registradas</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th>Entidad</th>
+                    <th>Descripción</th>
+                    <th>Severidad</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="obs-tbody">
+                  <tr><td colspan="6" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">🔔 Alertas — <span id="alrt-count" style="font-weight:400"></span></span>
+              <button data-op="marcarLeidas" id="btn-marcar-leidas" class="btn btn-sm btn-outline" style="display:none">
+                ✓ Marcar todas como leídas
+              </button>
+            </div>
+            <div id="alrt-lista" style="max-height:340px;overflow-y:auto">
+              <p class="text-muted" style="padding:.75rem">Cargando...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: VEHÍCULOS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="vehiculos" data-variante="mineria">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Agregar vehículo</span>
+            </div>
+            <form id="form-vehiculo" novalidate style="padding:1.25rem">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Patente</label>
+                  <input type="text" id="veh-patente" class="form-input" placeholder="AB123CD" style="text-transform:uppercase" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Tipo</label>
+                  <input type="text" id="veh-tipo" class="form-input" placeholder="Camioneta / Camión / Utilitario" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Empresa</label>
+                  <select id="veh-empresa" class="form-input"></select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Vencimiento seguro</label>
+                  <input type="date" id="veh-seguro" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Vencimiento VTV</label>
+                  <input type="date" id="veh-vtv" class="form-input" />
+                </div>
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Observaciones</label>
+                  <input type="text" id="veh-obs" class="form-input" placeholder="Opcional" />
+                </div>
+              </div>
+              <div id="veh-msg"></div>
+              <button type="submit" class="btn btn-primary">💾 Agregar vehículo</button>
+            </form>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Flota</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Patente</th>
+                    <th>Tipo</th>
+                    <th>Empresa</th>
+                    <th>Seguro</th>
+                    <th>VTV</th>
+                    <th>Estado</th>
+                    <th>Habilitación</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="veh-tbody">
+                  <tr><td colspan="8" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: EMPRESAS
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="empresas">
+
+          <div class="table-container" style="margin-bottom:1.5rem">
+            <div class="table-header">
+              <span class="table-title">Agregar empresa</span>
+            </div>
+            <form id="form-empresa" novalidate style="padding:1.25rem">
+              <div class="form-row">
+                <div class="form-group" style="flex:2">
+                  <label class="form-label">Razón social</label>
+                  <input type="text" id="empr-nombre" class="form-input" placeholder="Nombre de la empresa" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Tipo</label>
+                  <input type="text" id="empr-tipo" class="form-input" placeholder="Contratista / Proveedor" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">CUIT</label>
+                  <input type="text" id="empr-cuit" class="form-input" placeholder="30-12345678-9" />
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">Vencimiento ART</label>
+                  <input type="date" id="empr-art" class="form-input" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Vencimiento seguro</label>
+                  <input type="date" id="empr-seguro" class="form-input" />
+                </div>
+              </div>
+              <div id="empr-msg"></div>
+              <button type="submit" class="btn btn-primary">💾 Agregar empresa</button>
+            </form>
+          </div>
+
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Empresas</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Razón social</th>
+                    <th>Tipo</th>
+                    <th>CUIT</th>
+                    <th>ART</th>
+                    <th>Seguro</th>
+                    <th>Personal</th>
+                    <th>Vehículos</th>
+                    <th>Contrato</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="empr-tbody">
+                  <tr><td colspan="9" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             TAB: TRAZABILIDAD
+             ============================== -->
+        <div class="tab-pane hidden" data-tab-pane="trazabilidad">
+          <div class="table-container">
+            <div class="table-header">
+              <span class="table-title">Historial de acciones (últimas 100)</span>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha y hora</th>
+                    <th>Usuario</th>
+                    <th>Acción</th>
+                    <th>Tipo</th>
+                  </tr>
+                </thead>
+                <tbody id="traza-tbody">
+                  <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==============================
+             MODAL DE EDICIÓN (módulo Operación)
+             ============================== -->
+        <div id="op-modal-overlay" class="op-modal-overlay hidden">
+          <div class="op-modal" role="dialog" aria-modal="true">
+            <div class="op-modal-header">
+              <h3 id="op-modal-title">Editar</h3>
+              <button type="button" data-op="modalClose" class="op-modal-close" aria-label="Cerrar">×</button>
+            </div>
+            <div class="op-modal-body" id="op-modal-body"></div>
+            <div id="op-modal-msg"></div>
+            <div class="op-modal-footer">
+              <button type="button" data-op="modalCancel" class="btn btn-outline">Cancelar</button>
+              <button type="button" id="op-modal-save" class="btn btn-primary">💾 Guardar cambios</button>
+            </div>
+          </div>
+        </div>
+        <!-- ==============================
+             MODAL DE NOVEDAD (pestaña Asistencias)
+             ============================== -->
+        <div id="reg-modal-overlay" class="op-modal-overlay hidden">
+          <div class="op-modal" role="dialog" aria-modal="true">
+            <div class="op-modal-header">
+              <h3 id="reg-modal-title">Novedad</h3>
+              <button type="button" id="reg-modal-close" class="op-modal-close" aria-label="Cerrar">×</button>
+            </div>
+            <div class="op-modal-body" id="reg-modal-body"></div>
+            <div id="reg-modal-msg"></div>
+            <div class="op-modal-footer">
+              <button type="button" id="reg-modal-cancel" class="btn btn-outline">Cancelar</button>
+              <button type="button" id="reg-modal-delete" class="btn btn-danger hidden">🗑️ Quitar novedad</button>
+              <button type="button" id="reg-modal-save" class="btn btn-primary">💾 Guardar</button>
+            </div>
+          </div>
+        </div>
+        <!-- /tabs -->
+
+      </div><!-- /.admin-content -->
+    </main>
+
+  </div><!-- /#admin-dashboard -->
+
+</div><!-- /#admin-app -->
+
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script src="/js/config.js"></script>
+<script src="/js/fingerprint.js"></script>
+<script src="/js/geo.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/operacion.js"></script>
+<script src="/js/dashboard.js"></script>
+
+<script>
+  // ---- Registro del Service Worker ----
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(e => console.warn('SW:', e));
+    });
+  }
+
+  // ---- Sidebar toggle (mobile) ----
+  function toggleSidebar() {
+    const sb  = document.getElementById('admin-sidebar');
+    const ov  = document.getElementById('sidebar-overlay');
+    const open = sb.classList.toggle('open');
+    if (ov) ov.classList.toggle('open', open);
+  }
+
+  // ---- Actualizar título del topbar cuando cambia de tab ----
+  const tabTitles = {
+    overview:      'Vista General',
+    employees:     'Empleados',
+    records:       'Asistencias',
+    reports:       'Informes',
+    settings:      'Configuración',
+    admins:        'Administradores',
+    operacion:     'Habilitaciones',
+    reemplazos:    'Reemplazos',
+    observaciones: 'Observaciones',
+    vehiculos:     'Vehículos',
+    empresas:      'Empresas',
+    trazabilidad:  'Trazabilidad'
+  };
+
+  document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = document.getElementById('topbar-title');
+      if (t) t.textContent = tabTitles[btn.dataset.tab] || '';
+      // Cerrar sidebar en mobile
+      if (window.innerWidth <= 768) toggleSidebar();
+    });
+  });
+
+  // ---- Setup tab empleados (form) cuando se activa ----
+  document.querySelectorAll('[data-tab="employees"]').forEach(btn => {
+    btn.addEventListener('click', () => Dashboard._setupEmployeeTab());
+  });
+
+  // ---- Determinar si mostrar la app del empleado o el admin ----
+  // Acceso al panel admin: agregar #admin al URL o navegar a /#admin
+  (function determineView() {
+    const isAdmin = window.location.hash === '#admin' ||
+                    new URLSearchParams(window.location.search).get('admin') === '1';
+    if (isAdmin) {
+      Dashboard.init();
+    } else {
+      App.init();
+    }
+  })();
+</script>
+
+</body>
+</html>

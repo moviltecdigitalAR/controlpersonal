@@ -1,7 +1,7 @@
 {
-  "name": "Control de Acceso",
-  "short_name": "Acceso",
-  "description": "Sistema de control de acceso de personal. Registre su ingreso y egreso escaneando el QR del establecimiento.",
+  "name": "Control Personal para Proveedores Mineros",
+  "short_name": "Control Personal",
+  "description": "Control de personal para proveedores mineros: fichadas con GPS, asistencias, novedades y habilitaciones.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

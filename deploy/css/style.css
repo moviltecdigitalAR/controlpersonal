@@ -485,6 +485,36 @@ input, select, textarea { font-family: inherit; font-size: 1rem; }
   color: var(--gray-900);
 }
 
+/* Celdas de novedades (códigos de la planilla de la empresa) */
+.cal-cell.cal-click { cursor: pointer; }
+.cal-cell.cal-click:hover { outline: 2px solid #94A3B8; outline-offset: -2px; }
+.cal-nov { font-size: .68rem; font-weight: 800; }
+.nov-D  { background: #E2E8F0; color: #475569; }   /* Descanso */
+.nov-V  { background: #EDE9FE; color: #6D28D9; }   /* Vacaciones */
+.nov-LC { background: #DBEAFE; color: #1D4ED8; }   /* Licencia */
+.nov-EC { background: #FFEDD5; color: #C2410C; }   /* Extra campamento */
+.nov-EB { background: #FEF9C3; color: #A16207; }   /* Extra base */
+.nov-PM { background: #FCE7F3; color: #BE185D; }   /* Parte médico */
+.nov-AJ { background: #CCFBF1; color: #0F766E; }   /* Ausente justificado */
+.nov-AI { background: #FEE2E2; color: #B91C1C; }   /* Ausente injustificado */
+.nov-dot {
+  display: inline-block;
+  width: .6rem;
+  height: .6rem;
+  border-radius: 3px;
+  margin: 0 .1rem;
+  vertical-align: middle;
+}
+/* Badges compactos de novedades en el resumen */
+.nov-badge {
+  display: inline-block;
+  padding: .1rem .35rem;
+  margin: 0 .12rem .12rem 0;
+  border-radius: 6px;
+  font-size: .68rem;
+  font-weight: 700;
+}
+
 /* Fila expandible de detalle diario */
 .reg-det-row > td { border-top: none; }
 

@@ -13,7 +13,18 @@ const API = (() => {
 
   async function call(action, params = {}, retrySafe = false) {
     const url = window.APP_CONFIG.GAS_URL;
-    const body = JSON.stringify({ action, ...params });
+    // Adjuntar el token de sesión admin a todas las acciones que lo
+    // requieran. El backend lo verifica (firma HMAC + expiración) y
+    // rechaza si no es válido. Las acciones públicas (login, fichada
+    // de empleado) no llevan token.
+    let payload = { action, ...params };
+    // Adjuntar el token de sesión admin si existe. OJO: Auth es un const
+    // global (no propiedad de window), se referencia directamente.
+    if (!params.token && typeof Auth !== 'undefined' && typeof Auth.getAdminToken === 'function') {
+      const t = Auth.getAdminToken();
+      if (t) payload.token = t;
+    }
+    const body = JSON.stringify(payload);
     const maxAttempts = retrySafe ? 3 : 1;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -102,6 +113,13 @@ const API = (() => {
   const obtenerReporte      = (adm, filtros)        => call('obtenerReporte',      { adminEmail: adm, filtros });
   const actualizarConfig    = (adm, config)         => call('actualizarConfig',    { adminEmail: adm, config });
 
+  // ---- Novedades diarias (V, LC, EC, EB, PM, D, AJ, AI) ----
+  const marcarNovedad   = (adm, email, fecha, fechaHasta, codigo, detalle) =>
+    call('marcarNovedad', { adminEmail: adm, email, fecha, fechaHasta, codigo, detalle });
+  const borrarNovedad   = (adm, email, fecha, fechaHasta) =>
+    call('borrarNovedad', { adminEmail: adm, email, fecha, fechaHasta });
+  const obtenerNovedades = (adm, filtros)           => call('obtenerNovedades',    { adminEmail: adm, ...filtros });
+
   // ---- Módulo Operación (ex-ShiftControl) ----
   const obtenerOperacion     = (adm)                => call('obtenerOperacion',     { adminEmail: adm });
   const obtenerTrazabilidad  = (adm)                => call('obtenerTrazabilidad',  { adminEmail: adm });
@@ -116,14 +134,27 @@ const API = (() => {
   const asignarReemplazo     = (adm, id, nombre)    => call('asignarReemplazo',     { adminEmail: adm, id, candidatoNombre: nombre });
   const descartarReemplazo   = (adm, id)            => call('descartarReemplazo',   { adminEmail: adm, id });
 
+  // ---- Gestión de administradores (módulo Administradores) ----
+  const setearAdmin       = (adm, email, password) => call('setearAdmin',       { adminEmail: adm, email, password });
+  const quitarAdmin       = (adm, email)           => call('quitarAdmin',       { adminEmail: adm, email });
+  const cambiarClaveAdmin = (adm, email, password) => call('cambiarClaveAdmin', { adminEmail: adm, email, password });
+
+  // ---- Datos demo (prototipo) ----
+  const generarDatosDemo = (adm) => call('generarDatosDemo', { adminEmail: adm });
+  const borrarDatosDemo  = (adm) => call('borrarDatosDemo',  { adminEmail: adm });
+
   return {
+    call,   // acceso genérico al backend (usado por Auth para login/validación de sesión)
     verificarEmpleado, registrarMovimiento, obtenerEstado, getConfig,
     obtenerEmpleados, agregarEmpleado, actualizarEmpleado,
     resetearDispositivo, obtenerReporte, actualizarConfig,
+    marcarNovedad, borrarNovedad, obtenerNovedades,
     obtenerOperacion, obtenerTrazabilidad,
     agregarVehiculo, actualizarVehiculo,
     agregarEmpresa, actualizarEmpresa,
     agregarObservacion, resolverObservacion, marcarAlertasLeidas,
-    registrarAusencia, asignarReemplazo, descartarReemplazo
+    registrarAusencia, asignarReemplazo, descartarReemplazo,
+    setearAdmin, quitarAdmin, cambiarClaveAdmin,
+    generarDatosDemo, borrarDatosDemo
   };
 })();
