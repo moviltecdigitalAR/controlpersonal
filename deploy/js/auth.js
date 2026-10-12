@@ -9,6 +9,8 @@ const Auth = (() => {
 
   // Inicializar GIS
   function init() {
+    // La edición General no usa Google Sign-In (login con email+contraseña)
+    if ((window.APP_CONFIG || {}).VARIANTE === 'general') return Promise.resolve();
     return new Promise((resolve, reject) => {
       waitForGoogle()
         .then(() => {
@@ -96,6 +98,12 @@ const Auth = (() => {
   function getUser()     { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; } }
   function isSignedIn()  { return !!getUser(); }
 
+  // Sesión de usuario sin Google (edición General): guarda el email
+  // identificado con email+contraseña para que el resto del flujo funcione igual.
+  function setEmailSession(email, name) {
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ email, name: name || email })); } catch (_) {}
+  }
+
   function signOut() {
     sessionStorage.removeItem(SESSION_KEY);
     clearAdminToken();
@@ -148,6 +156,6 @@ const Auth = (() => {
     clearAdminToken();
   }
 
-  return { init, signIn, renderButton, getUser, isSignedIn, signOut,
+  return { init, signIn, renderButton, getUser, isSignedIn, signOut, setEmailSession,
            getAdminToken, adminLogin, validarAdminSession, hasAdminSession, adminLogout };
 })();

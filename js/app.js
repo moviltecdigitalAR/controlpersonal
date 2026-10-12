@@ -95,6 +95,16 @@ const App = (() => {
     ['loading-app-name', 'signin-app-title', 'sidebar-logo-title'].forEach(id => setText(id, appName));
     document.title = appName;
 
+    // La edición General (colegios, comercios, empresas) no usa Google:
+    // login con email + contraseña.
+    if ((window.APP_CONFIG || {}).VARIANTE === 'general') {
+      _aplicarVariante();
+      setLoading('Iniciando aplicación...', 'Cargando sistema');
+      showView('view-signin');
+      _bindEmailLogin();
+      return;
+    }
+
     setLoading('Iniciando aplicación...', 'Cargando sistema');
 
     try {
@@ -112,6 +122,92 @@ const App = (() => {
     } catch (err) {
       showError(err.message, 'Error de inicio');
     }
+  }
+
+  // Oculta los elementos exclusivos de la edición Minería y muestra
+  // los de la edición General (marcados con data-variante).
+  function _aplicarVariante() {
+    document.querySelectorAll('[data-variante="mineria"]').forEach(el => el.remove());
+    document.querySelectorAll('[data-variante="general"]').forEach(el => el.classList.remove('hidden'));
+  }
+
+  // ---- Login de la edición General: email + contraseña ----
+  function _bindEmailLogin() {
+    const form = document.getElementById('form-email-login');
+    if (!form || form._bound) return;
+    form._bound = true;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = (document.getElementById('email-login-email').value || '').trim().toLowerCase();
+      const pass  = document.getElementById('email-login-pass').value;
+      const msg   = document.getElementById('email-login-msg');
+      const btn   = document.getElementById('email-login-btn');
+
+      const mostrar = (texto, ok) => {
+        if (msg) { msg.textContent = texto; msg.className = 'form-msg ' + (ok ? 'success' : 'error'); }
+      };
+      if (!email || !pass) return mostrar('Complete email y contraseña.', false);
+
+      btn.disabled = true;
+      btn.textContent = 'Ingresando...';
+      if (msg) msg.textContent = '';
+
+      try {
+        setLoading('Preparando el registro...', 'Paso 1 de 2');
+        const fingerprint = await Fingerprint.generate();
+        // El administrador no depende del celular viejo ni del GPS.
+        // Los empleados sí requieren ambos controles para fichar.
+        const location = email === 'moviltecdigital@gmail.com'
+          ? null
+          : await Geo.getCurrentPosition().catch(() => null);
+        if (email !== 'moviltecdigital@gmail.com' && !location) {
+          showError('No se pudo obtener el GPS. Active la ubicación del teléfono, permita el acceso para este sitio y vuelva a intentar.', 'Ubicación necesaria');
+          return;
+        }
+        _state.fingerprint = fingerprint;
+        _state.location    = location;
+
+        setLoading('Verificando credenciales...', 'Paso 2 de 2');
+        const r = await API.call('loginGeneral', {
+          email, password: pass, fingerprintId: fingerprint,
+          ...(location ? { lat: location.lat, lng: location.lng, accuracy: location.accuracy } : {})
+        });
+
+        if (!r.success) {
+          // Errores de dispositivo/ubicación: pantalla completa (reintentar)
+          if (r.errorCode === 'DEVICE_MISMATCH' || r.errorCode === 'OUT_OF_GEOFENCE') {
+            showError(r.error, 'Acceso no permitido');
+            return;
+          }
+          // Credenciales: volver al formulario con el mensaje
+          showView('view-signin');
+          mostrar(r.error || 'Email o contraseña incorrectos.', false);
+          return;
+        }
+
+        if (r.tipo === 'admin') {
+          // Administrador: guardar sesión + token y entrar al panel
+          Auth.setEmailSession(email, r.nombre);
+          Auth.setAdminToken(r.token);
+          window.location.hash = '#admin';
+          window.location.reload();
+          return;
+        }
+
+        // Empleado: directo a la pantalla de fichada
+        _state.user     = { email, name: (r.empleado.nombre || '') + ' ' + (r.empleado.apellido || '') };
+        _state.empleado = r.empleado;
+        _showConfirmation();
+
+      } catch (err) {
+        showView('view-signin');
+        mostrar('Error de conexión: ' + err.message, false);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Ingresar';
+      }
+    });
   }
 
   async function proceed() {

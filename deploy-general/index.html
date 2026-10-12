@@ -51,10 +51,27 @@
     </div>
     <div class="glass-card">
       <h2 class="signin-title">¡Bienvenido!</h2>
-      <p class="signin-sub">Inicie sesión con su cuenta Google para registrar su entrada o salida.</p>
-      <div class="signin-divider">Autenticación segura</div>
-      <div id="google-btn-container"></div>
-      <p class="signin-note">Su email se usa únicamente para identificarlo en el sistema. Nunca compartimos sus datos.</p>
+      <p class="signin-sub" data-variante="mineria">Inicie sesión con su cuenta Google para registrar su entrada o salida.</p>
+      <p class="signin-sub hidden" data-variante="general">Ingrese con su email y contraseña para registrar su entrada o salida.</p>
+      <div class="signin-divider" data-variante="mineria">Autenticación segura</div>
+      <div id="google-btn-container" data-variante="mineria"></div>
+      <!-- Edición General: acceso con email y contraseña (sin Google) -->
+      <div id="email-login-container" class="hidden" data-variante="general">
+        <form id="form-email-login" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="email-login-email">Email</label>
+            <input type="email" id="email-login-email" class="form-input" placeholder="su@email.com" autocomplete="username" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="email-login-pass">Contraseña</label>
+            <input type="password" id="email-login-pass" class="form-input" placeholder="••••••••" autocomplete="current-password" required />
+          </div>
+          <div id="email-login-msg"></div>
+          <button type="submit" id="email-login-btn" class="btn btn-primary btn-full" style="margin-top:.5rem">Ingresar</button>
+        </form>
+      </div>
+      <p class="signin-note" data-variante="mineria">Su email se usa únicamente para identificarlo en el sistema. Nunca compartimos sus datos.</p>
+      <p class="signin-note hidden" data-variante="general">Si no recuerda su contraseña, contacte al administrador.</p>
     </div>
   </div>
 

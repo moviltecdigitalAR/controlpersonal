@@ -24,6 +24,10 @@ const Dashboard = (() => {
       const user = Auth.getUser();
       if (user) {
         await _onAdminAuth(user);
+      } else if ((window.APP_CONFIG || {}).VARIANTE === 'general') {
+        // La edición General tiene un único punto de entrada: el formulario
+        // de email+contraseña (que también identifica administradores).
+        window.location.replace(window.location.pathname);
       } else {
         _setLoading(false);
         _showSection('admin-login');
@@ -297,29 +301,42 @@ const Dashboard = (() => {
     if (!form || form._bound) return;
     form._bound = true;
 
-    // Mostrar/ocultar el campo de contraseña admin según el checkbox
+    // Mostrar/ocultar el campo de contraseña según el checkbox.
+    // En la edición General todos los empleados ingresan con clave.
     const chk = form.querySelector('[name="esAdmin"]');
     const passGroup = document.getElementById('emp-admin-pass-group');
+    const passLabel = passGroup ? passGroup.querySelector('label') : null;
+    const esGeneral = (window.APP_CONFIG || {}).VARIANTE === 'general';
     if (chk && passGroup) {
-      chk.addEventListener('change', () => {
-        passGroup.style.display = chk.checked ? '' : 'none';
-      });
+      if (esGeneral) {
+        passGroup.style.display = '';
+        if (passLabel) passLabel.textContent = 'Clave de ingreso * (mín. 8 caracteres)';
+      } else {
+        chk.addEventListener('change', () => {
+          passGroup.style.display = chk.checked ? '' : 'none';
+        });
+      }
     }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const data = Object.fromEntries(new FormData(form));
       data.esAdmin = form.querySelector('[name="esAdmin"]').checked;
-      if (data.esAdmin) data.adminPassword = form.querySelector('[name="adminPassword"]').value;
-      const r = await API.agregarEmpleado(_admin.email, data);
+      if (data.esAdmin || esGeneral) data.adminPassword = form.querySelector('[name="adminPassword"]').value;
       const msg = document.getElementById('msg-agregar');
+      // En la edición General la clave de ingreso es obligatoria para todos
+      if (esGeneral && (!data.adminPassword || data.adminPassword.length < 8)) {
+        if (msg) { msg.textContent = 'La clave de ingreso es obligatoria (mínimo 8 caracteres).'; msg.className = 'form-msg error'; }
+        return;
+      }
+      const r = await API.agregarEmpleado(_admin.email, data);
       if (msg) {
         msg.textContent  = r.success ? r.message : 'Error: ' + r.error;
         msg.className    = r.success ? 'form-msg success' : 'form-msg error';
       }
       if (r.success) {
         form.reset();
-        if (passGroup) passGroup.style.display = 'none';
+        if (passGroup && !esGeneral) passGroup.style.display = 'none';
         _renderEmpleados();
       }
     });

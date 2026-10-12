@@ -13,9 +13,60 @@
 // ============================================================
 
 function getSpreadsheet() {
-  const sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
-  if (!sheetId) throw new Error('SHEET_ID no configurado en las propiedades del script.');
+  let sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  if (!sheetId) {
+    // Primera vez que se usa el script: crear la planilla automáticamente
+    // (no requiere configurar propiedades a mano).
+    sheetId = _bootstrapBD();
+  }
   return SpreadsheetApp.openById(sheetId);
+}
+
+// ---- Auto-instalación de la base de datos ----
+// Si SHEET_ID no está configurado, se crea la planilla en el Drive del
+// dueño del script, con todas las hojas y el administrador raíz sembrado.
+// Ocurre una sola vez (después queda guardado el ID en propiedades).
+function _bootstrapBD() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    // Doble chequeo bajo lock: otra request pudo crearla en paralelo
+    let sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+    if (sheetId) return sheetId;
+
+    const ss = SpreadsheetApp.create('Control Personal — Base de Datos');
+    sheetId = ss.getId();
+    PropertiesService.getScriptProperties().setProperty('SHEET_ID', sheetId);
+
+    // Inicializar hojas + sembrar el admin raíz
+    inicializarHojas();
+    _seedRootAdmin();
+    return sheetId;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Sembrar el administrador raíz (BOOTSTRAP_ADMIN_EMAIL + hash canónico)
+function _seedRootAdmin() {
+  if (!BOOTSTRAP_ADMIN_EMAIL || !BOOTSTRAP_ADMIN_HASH) return;
+  const sh = getEmpleadosSheet();
+  if (!sh.getRange(1, 20).getValue()) sh.getRange(1, 20).setValue('Admin_Pass_Hash');
+
+  // Quitar la fila de ejemplo que crea inicializarHojas
+  const rows = sh.getDataRange().getValues();
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).toLowerCase() === 'admin@tuempresa.com') sh.deleteRow(i + 1);
+  }
+
+  if (!findEmpleado(BOOTSTRAP_ADMIN_EMAIL)) {
+    sh.appendRow([
+      BOOTSTRAP_ADMIN_EMAIL, 'Admin', 'Principal', 'Dirección', '',
+      '', true, true, 'Fuera',
+      '', '', '', '', '', '', 'ok', 'habilitado', '', '',
+      BOOTSTRAP_ADMIN_HASH
+    ]);
+  }
 }
 
 function doPost(e) {
@@ -47,6 +98,14 @@ function doGet(e) {
 
 function handleAction(data) {
   switch (data.action) {
+    case 'loginAdmin':           return loginAdmin(data);
+    case 'loginGeneral':         return loginGeneral(data);
+    case 'validarToken':         return validarToken(data);
+    case 'logoutAdmin':          return logoutAdmin(data);
+    case 'obtenerBD':            return obtenerBD(data);
+    case 'setearAdmin':          return setearAdmin(data);
+    case 'quitarAdmin':          return quitarAdmin(data);
+    case 'cambiarClaveAdmin':    return cambiarClaveAdmin(data);
     case 'verificarEmpleado':    return verificarEmpleado(data);
     case 'registrarMovimiento':  return registrarMovimiento(data);
     case 'obtenerEstado':        return obtenerEstado(data);
@@ -55,6 +114,11 @@ function handleAction(data) {
     case 'agregarEmpleado':      return agregarEmpleado(data);
     case 'actualizarEmpleado':   return actualizarEmpleado(data);
     case 'resetearDispositivo':  return resetearDispositivo(data);
+    case 'generarDatosDemo':     return generarDatosDemo(data);
+    case 'borrarDatosDemo':      return borrarDatosDemo(data);
+    case 'marcarNovedad':        return marcarNovedad(data);
+    case 'borrarNovedad':        return borrarNovedad(data);
+    case 'obtenerNovedades':     return obtenerNovedades(data);
     case 'actualizarConfig':     return actualizarConfig(data);
     case 'getConfig':            return getConfig();
     // ---- Módulo Operación (ex-ShiftControl) ----
@@ -81,6 +145,380 @@ function handleAction(data) {
 function getEmpleadosSheet()   { return getSpreadsheet().getSheetByName('Empleados'); }
 function getRegistrosSheet()   { return getSpreadsheet().getSheetByName('Registros'); }
 function getConfigSheet()      { return getSpreadsheet().getSheetByName('Configuracion'); }
+function getSesionesSheet()    { return ensureSheet('Sesiones', ['Token', 'Email', 'Creado', 'Expira']); }
+
+// ============================================================
+// SEGURIDAD — autenticación real de administrador
+// ============================================================
+// Cómo funciona:
+//  1. El admin hace login con email + contraseña (loginAdmin).
+//     La contraseña se verifica contra el hash SHA-256 guardado
+//     en la hoja Empleados (columna Admin_Pass_Hash).
+//  2. Si es válida, el servidor genera un token firmado HMAC con
+//     expiración (12h) y lo guarda en la hoja Sesiones.
+//  3. Todas las acciones admin requieren ese token. El servidor
+//     verifica firma + expiración en cada llamada (esAdmin).
+//  4. Rate limiting por acción+email con CacheService.
+//  5. Fichada de empleado exige fingerprintId válido (anti-fraude).
+//
+// SETUP AUTOMÁTICO (cero pasos manuales):
+//  - SESSION_SECRET: se genera solo la primera vez que alguien hace
+//    login y queda guardado en las Propiedades del script.
+//  - Contraseña del administrador inicial: la primera vez que
+//    BOOTSTRAP_ADMIN_EMAIL intente entrar, el sistema escribe
+//    automáticamente su hash (BOOTSTRAP_ADMIN_HASH) en la planilla.
+//    Para cambiarla después: setearAdminPassHash('email', 'nueva')
+// ============================================================
+
+const BOOTSTRAP_ADMIN_EMAIL = 'moviltecdigital@gmail.com';
+const BOOTSTRAP_ADMIN_HASH  = 'cd5aa956e1ad485481d8b1d51e0cb902406adffdb9294ab859c5d9989d8e5588'; // SHA-256
+
+const SESSION_TTL_HORAS = 12;
+const RATE_LIMIT_MAX    = 30;   // llamadas
+const RATE_LIMIT_WIN    = 60;   // por minuto
+
+// ---- SHA-256 hex (para hash de contraseña y firma HMAC) ----
+function _sha256Hex(texto) {
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(texto),
+    Utilities.Charset.UTF_8
+  );
+  return bytes.map(b => (b < 0 ? b + 256 : b).toString(16).padStart(2, '0')).join('');
+}
+
+// ---- HMAC-SHA256 hex (firma del token) ----
+function _hmacHex(clave, texto) {
+  const bytes = Utilities.computeHmacSha256Signature(String(texto), String(clave), Utilities.Charset.UTF_8);
+  return bytes.map(b => (b < 0 ? b + 256 : b).toString(16).padStart(2, '0')).join('');
+}
+
+// ---- Rate limiting (CacheService; ventana deslizante simple) ----
+function _rateLimitOK(accion, clave) {
+  const cache = CacheService.getScriptCache();
+  const k     = 'rl:' + accion + ':' + String(clave || 'anon').toLowerCase();
+  const n     = parseInt(cache.get(k) || '0', 10);
+  if (n >= RATE_LIMIT_MAX) return false;
+  cache.put(k, String(n + 1), RATE_LIMIT_WIN);
+  return true;
+}
+
+// ---- Generar token firmado: "expira|firma" ----
+function _generarToken(email) {
+  const props  = PropertiesService.getScriptProperties();
+  let   secret = props.getProperty('SESSION_SECRET');
+  if (!secret) {
+    // Auto-provisionamiento: se crea una sola vez y queda persistido
+    // en las propiedades del script. No hay que configurar nada a mano.
+    secret = Utilities.getUuid() + '-' + Utilities.getUuid() + '-' + Utilities.getUuid();
+    props.setProperty('SESSION_SECRET', secret);
+  }
+  const expira = Date.now() + SESSION_TTL_HORAS * 3600 * 1000;
+  const firma  = _hmacHex(secret, String(email).toLowerCase() + '|' + expira);
+  return expira + '|' + firma;
+}
+
+// ---- Verificar token: devuelve email si válido, null si no ----
+function _verificarToken(token) {
+  try {
+    if (!token) return null;
+    const secret = PropertiesService.getScriptProperties().getProperty('SESSION_SECRET');
+    if (!secret) return null;
+    const parts = String(token).split('|');
+    if (parts.length !== 2) return null;
+    const expira = parseInt(parts[0], 10);
+    if (isNaN(expira) || Date.now() > expira) return null;   // expirado
+    // Buscamos el email en la hoja de sesiones (valida revocación)
+    const rows = getSesionesSheet().getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(token)) {
+        const email = String(rows[i][1]).toLowerCase();
+        const expHoja = new Date(rows[i][3]).getTime();
+        if (Date.now() > expHoja) return null;
+        const firmaEsperada = _hmacHex(secret, email + '|' + expira);
+        if (firmaEsperada === parts[1]) return email;
+        return null;
+      }
+    }
+    return null;
+  } catch (_) { return null; }
+}
+
+// ---- ¿Es admin? Ahora exige token válido (o email, para compat) ----
+// Acepta: { token }  -> valida firma+expiración (seguro)
+//         { adminEmail } -> SOLO si SESSION_SECRET no está seteado (modo legacy)
+function esAdminFn(data) {
+  const t = data && data.token ? _verificarToken(data.token) : null;
+  if (t) {
+    // El administrador raíz siempre tiene acceso, sin importar el flag
+    if (t === BOOTSTRAP_ADMIN_EMAIL) return true;
+    const emp = findEmpleado(t);
+    return !!(emp && (emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE'));
+  }
+  // Modo legacy: solo si no hay secreto configurado (durante migración)
+  const secret = PropertiesService.getScriptProperties().getProperty('SESSION_SECRET');
+  if (!secret && data && data.adminEmail) {
+    if (String(data.adminEmail).toLowerCase().trim() === BOOTSTRAP_ADMIN_EMAIL) return true;
+    const emp = findEmpleado(data.adminEmail);
+    return !!(emp && (emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE'));
+  }
+  return false;
+}
+
+// ---- LOGIN ADMIN: email + contraseña -> token firmado ----
+function loginAdmin(data) {
+  if (!_rateLimitOK('login', data.email)) {
+    return { success: false, error: 'Demasiados intentos. Aguarde un minuto.' };
+  }
+  const email = String(data.email || '').toLowerCase().trim();
+  const pass  = String(data.password || '');
+  if (!email || !pass) return { success: false, error: 'Email y contraseña requeridos.' };
+
+  const emp = findEmpleado(email);
+  const esRoot = email === BOOTSTRAP_ADMIN_EMAIL && !!BOOTSTRAP_ADMIN_HASH;
+
+  // El administrador raíz nunca puede quedar bloqueado: en cada intento de
+  // login se auto-repara (flag Es_Admin y hash canónico en col 20).
+  if (emp && esRoot) {
+    const shEmp = getEmpleadosSheet();
+    if (!shEmp.getRange(1, 20).getValue()) shEmp.getRange(1, 20).setValue('Admin_Pass_Hash');
+    const flagOk = emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
+    if (!flagOk) {
+      shEmp.getRange(emp.rowIndex, 8).setValue(true);
+      emp.data[7] = true;
+      logTraza('Permiso de administrador restaurado para ' + email, email, 'amarillo');
+    }
+  }
+
+  const esAdmin = emp && (emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE');
+  if (!emp || !esAdmin) return { success: false, error: 'Credenciales inválidas.' };
+
+  // Hash de la contraseña guardado en columna Admin_Pass_Hash (col 20 / índice 19)
+  let hashGuardado = String(emp.data[19] || '').trim().toLowerCase();
+  if (esRoot) {
+    // La contraseña del raíz siempre es la canónica (BOOTSTRAP_ADMIN_HASH):
+    // si el hash se perdió o fue cambiado, se restaura para garantizar
+    // acceso permanente.
+    if (hashGuardado !== BOOTSTRAP_ADMIN_HASH) {
+      getEmpleadosSheet().getRange(emp.rowIndex, 20).setValue(BOOTSTRAP_ADMIN_HASH);
+      hashGuardado = BOOTSTRAP_ADMIN_HASH;
+      logTraza('Contraseña del administrador raíz restaurada', email, 'amarillo');
+    }
+  } else if (!hashGuardado) {
+    return { success: false, error: 'Este administrador no tiene contraseña configurada. Otro administrador puede asignarla desde el módulo Administradores.' };
+  }
+  if (_sha256Hex(pass) !== hashGuardado) {
+    return { success: false, error: 'Credenciales inválidas.' };
+  }
+
+  const token  = _generarToken(email);
+  const expira = new Date(Date.now() + SESSION_TTL_HORAS * 3600 * 1000);
+  getSesionesSheet().appendRow([token, email, new Date(), expira]);
+  logTraza('Login admin: ' + email, email, 'azul');
+  return { success: true, token, email, expira: expira.toISOString() };
+}
+
+// ---- LOGIN GENERAL (email + contraseña, sin Google) ----
+// Usado por la edición General (colegios, comercios, empresas). Identifica
+// a administradores (devuelve token de sesión) y a empleados (devuelve sus
+// datos para la pantalla de fichada, con vinculación de dispositivo).
+function loginGeneral(data) {
+  const email = String(data.email || '').toLowerCase().trim();
+  const pass  = String(data.password || '');
+  if (!_rateLimitOK('loginGeneral', email)) {
+    return { success: false, error: 'Demasiados intentos. Aguarde un minuto.' };
+  }
+  if (!email || !pass) return { success: false, error: 'Email y contraseña requeridos.' };
+
+  const emp = findEmpleado(email);
+  if (!emp) return { success: false, error: 'Email o contraseña incorrectos.' };
+
+  const esAdminRow = emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
+  const esRoot = email === BOOTSTRAP_ADMIN_EMAIL && !!BOOTSTRAP_ADMIN_HASH;
+
+  // ---- Administrador: delegar en loginAdmin (auto-repara raíz y crea token) ----
+  if (esAdminRow || esRoot) {
+    const r = loginAdmin(data);
+    if (!r.success) return r;
+    return { success: true, tipo: 'admin', token: r.token, expira: r.expira, nombre: emp.data[1] };
+  }
+
+  if (!data.fingerprintId || !String(data.fingerprintId).trim().startsWith('fp_')) {
+    return { success: false, error: 'Dispositivo no identificado. Use la app oficial desde su celular vinculado.' };
+  }
+
+  // ---- Empleado: validar contraseña (col Admin_Pass_Hash) ----
+  const hashGuardado = String(emp.data[19] || '').trim().toLowerCase();
+  if (!hashGuardado || _sha256Hex(pass) !== hashGuardado) {
+    return { success: false, error: 'Email o contraseña incorrectos.' };
+  }
+  const activo = emp.data[6] === true || String(emp.data[6]).toUpperCase() === 'TRUE';
+  if (!activo) return { success: false, error: 'Empleado inactivo. Contacte al administrador.' };
+
+  // ---- Dispositivo + geocerca: mismos controles que el flujo con Google ----
+  const verif = verificarEmpleado(data);
+  if (!verif.success) return verif;
+  return { success: true, tipo: 'empleado', empleado: verif.empleado };
+}
+
+// ---- URL de la planilla (para el admin; útil para ubicar la BD) ----
+function obtenerBD(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const ss = getSpreadsheet();
+  return { success: true, url: ss.getUrl(), nombre: ss.getName() };
+}
+
+// ---- VALIDAR TOKEN (para el frontend al cargar) ----
+function validarToken(data) {
+  const email = _verificarToken(data.token);
+  if (!email) return { success: false, error: 'Sesión expirada o inválida.' };
+  const emp = findEmpleado(email);
+  return {
+    success: true,
+    admin: { email, nombre: emp ? emp.data[1] : '', apellido: emp ? emp.data[2] : '' }
+  };
+}
+
+// ---- LOGOUT ----
+function logoutAdmin(data) {
+  if (!data.token) return { success: true };
+  const sh   = getSesionesSheet();
+  const rows = sh.getDataRange().getValues();
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]) === String(data.token)) { sh.deleteRow(i + 1); }
+  }
+  return { success: true };
+}
+
+// ---- Setear hash de contraseña de un admin (una sola vez) ----
+// Llamar desde el editor de Apps Script: setearAdminPassHash('email', 'password')
+function setearAdminPassHash(email, password) {
+  const emp = findEmpleado(email);
+  if (!emp) throw new Error('Empleado no encontrado: ' + email);
+  const hash = _sha256Hex(password);
+  // Asegurar columna 20 (Admin_Pass_Hash)
+  getEmpleadosSheet().getRange(1, 20).setValue('Admin_Pass_Hash');
+  getEmpleadosSheet().getRange(emp.rowIndex, 20).setValue(hash);
+  Logger.log('Hash guardado para ' + email);
+  return { success: true };
+}
+
+// ============================================================
+// GESTIÓN DE ADMINISTRADORES DESDE EL PANEL (sin tocar el script)
+// ============================================================
+
+// Asegura que exista el encabezado de la columna Admin_Pass_Hash (col 20)
+function _asegurarColHash() {
+  const sh = getEmpleadosSheet();
+  if (!sh.getRange(1, 20).getValue()) sh.getRange(1, 20).setValue('Admin_Pass_Hash');
+}
+
+// Borra todas las sesiones activas de un email (salvo un token exceptuado)
+function _borrarSesionesDe(email, exceptoToken) {
+  try {
+    const sh   = getSesionesSheet();
+    const rows = sh.getDataRange().getValues();
+    for (let i = rows.length - 1; i >= 1; i--) {
+      if (String(rows[i][1]).toLowerCase() === String(email).toLowerCase() &&
+          String(rows[i][0]) !== String(exceptoToken || '')) {
+        sh.deleteRow(i + 1);
+      }
+    }
+  } catch (_) { /* la revocación nunca debe romper la operación principal */ }
+}
+
+function _contarAdmins() {
+  const rows = getEmpleadosSheet().getDataRange().getValues();
+  let n = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0] && (rows[i][7] === true || String(rows[i][7]).toUpperCase() === 'TRUE')) n++;
+  }
+  return n;
+}
+
+function _claveValida(pass) {
+  return typeof pass === 'string' && pass.length >= 8;
+}
+
+// ---- Promover un empleado existente a administrador (con su contraseña) ----
+function setearAdmin(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const llamador = _verificarToken(data.token);
+  if (!_rateLimitOK('setearAdmin', llamador || 'x')) {
+    return { success: false, error: 'Demasiadas operaciones. Aguarde un minuto.' };
+  }
+  const email = String(data.email || '').toLowerCase().trim();
+  const pass  = String(data.password || '');
+  if (!email) return { success: false, error: 'Email requerido.' };
+  if (!_claveValida(pass)) return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
+
+  const emp = findEmpleado(email);
+  if (!emp) return { success: false, error: 'No existe un empleado con ese email. Agréguelo primero en la pestaña Empleados.' };
+
+  _asegurarColHash();
+  const sh = getEmpleadosSheet();
+  sh.getRange(emp.rowIndex, 8).setValue(true);
+  sh.getRange(emp.rowIndex, 20).setValue(_sha256Hex(pass));
+  logTraza('Nuevo administrador designado — ' + emp.data[1] + ' ' + emp.data[2], llamador || 'admin', 'verde');
+  return { success: true, message: email + ' ahora es administrador del sistema.' };
+}
+
+// ---- Quitar permisos de administrador (revoca sus sesiones) ----
+function quitarAdmin(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const email    = String(data.email || '').toLowerCase().trim();
+  const llamador = _verificarToken(data.token);
+  if (!email) return { success: false, error: 'Email requerido.' };
+  if (email === BOOTSTRAP_ADMIN_EMAIL) {
+    return { success: false, error: 'El administrador raíz no puede ser removido.' };
+  }
+  if (llamador && llamador === email) {
+    return { success: false, error: 'No puede quitarse a sí mismo. Pida a otro administrador que lo haga.' };
+  }
+  const emp = findEmpleado(email);
+  if (!emp) return { success: false, error: 'Empleado no encontrado.' };
+  const eraAdmin = emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
+  if (!eraAdmin) return { success: false, error: 'Ese empleado no es administrador.' };
+  if (_contarAdmins() <= 1) {
+    return { success: false, error: 'Debe existir al menos un administrador.' };
+  }
+
+  const sh = getEmpleadosSheet();
+  sh.getRange(emp.rowIndex, 8).setValue(false);
+  sh.getRange(emp.rowIndex, 20).setValue('');
+  _borrarSesionesDe(email, null);
+  logTraza('Administrador removido — ' + emp.data[1] + ' ' + emp.data[2], llamador || 'admin', 'rojo');
+  return { success: true, message: email + ' dejó de ser administrador.' };
+}
+
+// ---- Cambiar la contraseña de un administrador (propia o de otro) ----
+function cambiarClaveAdmin(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const llamador = _verificarToken(data.token);
+  if (!_rateLimitOK('cambiarClave', llamador || 'x')) {
+    return { success: false, error: 'Demasiadas operaciones. Aguarde un minuto.' };
+  }
+  const email = String(data.email || '').toLowerCase().trim();
+  const pass  = String(data.password || '');
+  if (!email) return { success: false, error: 'Email requerido.' };
+  if (email === BOOTSTRAP_ADMIN_EMAIL) {
+    return { success: false, error: 'La contraseña del administrador raíz no se puede cambiar desde el panel.' };
+  }
+  if (!_claveValida(pass)) return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
+
+  const emp = findEmpleado(email);
+  if (!emp) return { success: false, error: 'Empleado no encontrado.' };
+  const esAdmin = emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
+  if (!esAdmin) return { success: false, error: 'Ese empleado no es administrador.' };
+
+  _asegurarColHash();
+  getEmpleadosSheet().getRange(emp.rowIndex, 20).setValue(_sha256Hex(pass));
+  // Revocar las sesiones de ese admin, salvo la del llamador (si cambia la propia,
+  // no lo echamos de la sesión actual)
+  _borrarSesionesDe(email, data.token || null);
+  logTraza('Contraseña de administrador cambiada — ' + email, llamador || 'admin', 'amarillo');
+  return { success: true, message: 'Contraseña actualizada correctamente.' };
+}
 
 function findEmpleado(email) {
   const sheet = getEmpleadosSheet();
@@ -101,6 +539,7 @@ function rowToEmpleado(row) {
     sector:        row[3],
     turno:         row[4],
     dispositivoId: row[5],
+    tieneDispositivo: !!(row[5] && row[5] !== ''),
     activo:        row[6] === true || String(row[6]).toUpperCase() === 'TRUE',
     esAdmin:       row[7] === true || String(row[7]).toUpperCase() === 'TRUE',
     estado:        row[8] || 'Fuera',
@@ -113,7 +552,11 @@ function rowToEmpleado(row) {
     licenciaVenc:  fmtFechaCell(row[14]),
     artEstado:     row[15] || 'ok',
     habilitacion:  row[16] || 'habilitado',
-    obsGestion:    row[17] || ''
+    obsGestion:    row[17] || '',
+    // ---- Convenio (columna S) ----
+    convenio:      row[18] || '',
+    // ---- ¿Tiene contraseña de administrador configurada? (flag, nunca el hash) ----
+    tieneClaveAdmin: !!(row[19] && String(row[19]).trim())
   };
 }
 
@@ -123,6 +566,21 @@ function rowToEmpleado(row) {
 
 function verificarEmpleado(data) {
   const { email, fingerprintId, lat, lng } = data;
+
+  // Rate limiting anti-fuerza-bruta
+  if (!_rateLimitOK('verificar', email)) {
+    return { success: false, error: 'Demasiados intentos. Aguarde un minuto.' };
+  }
+
+  // ---- Anti-fraude: la fichada exige fingerprint de dispositivo ----
+  // Sin fingerprint válido, cualquiera podría fichar por API en nombre
+  // de otro empleado. El formato real empieza con 'fp_'.
+  if (!fingerprintId || !String(fingerprintId).trim().startsWith('fp_')) {
+    return {
+      success: false,
+      error: 'Dispositivo no identificado. Use la app oficial desde su celular vinculado.'
+    };
+  }
 
   const emp = findEmpleado(email);
   if (!emp) {
@@ -146,11 +604,11 @@ function verificarEmpleado(data) {
   }
 
   // ---- CAPA 2: Dispositivo ----
-  if (fingerprintId) {
+  // (ya garantizado que fingerprintId existe y empieza con fp_)
+  {
     const devStored = String(empleado.dispositivoId || '').trim();
     const devSent   = String(fingerprintId).trim();
     // Solo considerar válido si tiene el formato real de fingerprint (fp_xxxxx)
-    // Cualquier otro valor (vacío, "FALSE", espacio, etc.) se trata como no registrado
     const devStoredValid = devStored.startsWith('fp_');
 
     if (!devStoredValid) {
@@ -333,71 +791,74 @@ function obtenerEstado(data) {
 
 // ============================================================
 // FUNCIONES ADMIN
-// ============================================================
-
-function esAdminFn(email) {
-  const emp = findEmpleado(email);
-  if (!emp) return false;
-  return emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
-}
-
 function obtenerEmpleados(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos de administrador.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos de administrador.' };
 
+  migrarEmpleadosColumnas();
   const sheet = getEmpleadosSheet();
   const rows  = sheet.getDataRange().getValues();
   const empleados = [];
 
   for (let i = 1; i < rows.length; i++) {
     if (!rows[i][0]) continue;
-    empleados.push({
-      email:           rows[i][0],
-      nombre:          rows[i][1],
-      apellido:        rows[i][2],
-      sector:          rows[i][3],
-      turno:           rows[i][4],
-      tieneDispositivo: !!(rows[i][5] && rows[i][5] !== ''),
-      activo:          rows[i][6] === true || String(rows[i][6]).toUpperCase() === 'TRUE',
-      esAdmin:         rows[i][7] === true || String(rows[i][7]).toUpperCase() === 'TRUE',
-      estado:          rows[i][8] || 'Fuera'
-    });
+    empleados.push(rowToEmpleado(rows[i]));
   }
   return { success: true, empleados };
 }
 
 function agregarEmpleado(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const e = data.empleado;
   if (!e || !e.email || !e.nombre || !e.apellido) return { success: false, error: 'Datos incompletos.' };
   if (findEmpleado(e.email)) return { success: false, error: 'Ya existe un empleado con ese email.' };
 
+  // Si se marca como administrador, la contraseña es obligatoria (mín. 8).
+  // Para empleados es opcional (se usa para ingresar en la edición General).
+  const seraAdmin = e.esAdmin === true || e.esAdmin === 'true';
+  if (seraAdmin && !_claveValida(e.adminPassword)) {
+    return { success: false, error: 'Para crear un administrador, ingrese una contraseña de al menos 8 caracteres.' };
+  }
+  if (!seraAdmin && e.adminPassword && !_claveValida(e.adminPassword)) {
+    return { success: false, error: 'La clave de ingreso debe tener al menos 8 caracteres.' };
+  }
+
+  _asegurarColHash();
   getEmpleadosSheet().appendRow([
     e.email.toLowerCase().trim(),
     e.nombre, e.apellido, e.sector || '', e.turno || '',
     '',   // dispositivo vacío
     true, // activo
-    e.esAdmin === true || e.esAdmin === 'true' ? true : false,
+    seraAdmin,
     'Fuera',
     // ---- Módulo Operación ----
     e.empresa || '', e.dni || '', e.telefono || '',
     e.aptoVenc || '', e.licenciaTipo || '', e.licenciaVenc || '',
-    'ok', 'habilitado', ''
+    'ok', 'habilitado', '',
+    e.convenio || '',
+    // ---- Clave de ingreso (hash; obligatoria si es admin) ----
+    e.adminPassword ? _sha256Hex(e.adminPassword) : ''
   ]);
-  logTraza(`Empleado agregado — ${e.nombre} ${e.apellido} (${e.sector || 'sin sector'})`, data.adminEmail, 'verde');
-  return { success: true, message: 'Empleado agregado correctamente.' };
+  logTraza(`Empleado agregado — ${e.nombre} ${e.apellido} (${e.sector || 'sin sector'})`, _verificarToken(data.token) || data.adminEmail, 'verde');
+  return { success: true, message: seraAdmin ? 'Empleado agregado y designado administrador.' : 'Empleado agregado correctamente.' };
 }
 
 function actualizarEmpleado(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const emp = findEmpleado(data.email);
   if (!emp) return { success: false, error: 'Empleado no encontrado.' };
 
   migrarEmpleadosColumnas();
+  // Los permisos de administrador se gestionan con revocación de sesiones y
+  // contraseña: bloquear el cambio directo por este canal (anti-bypass).
+  if (data.campo === 'esAdmin') {
+    return { success: false, error: 'Los permisos de administrador se gestionan en el módulo Administradores.' };
+  }
   const colMap = {
     nombre: 2, apellido: 3, sector: 4, turno: 5, activo: 7, esAdmin: 8,
     // ---- Módulo Operación ----
     empresa: 10, dni: 11, telefono: 12, aptoVenc: 13, licenciaTipo: 14,
-    licenciaVenc: 15, artEstado: 16, habilitacion: 17, obsGestion: 18
+    licenciaVenc: 15, artEstado: 16, habilitacion: 17, obsGestion: 18,
+    convenio: 19
   };
   const col = colMap[data.campo];
   if (!col) return { success: false, error: 'Campo no válido.' };
@@ -413,7 +874,7 @@ function actualizarEmpleado(data) {
 }
 
 function resetearDispositivo(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const emp = findEmpleado(data.emailEmpleado);
   if (!emp) return { success: false, error: 'Empleado no encontrado.' };
   getEmpleadosSheet().getRange(emp.rowIndex, 6).setValue('');
@@ -422,11 +883,261 @@ function resetearDispositivo(data) {
 }
 
 // ============================================================
+// DATOS DEMO — empleados y fichadas de ejemplo para probar
+// las vistas Resumen / Calendario / Detalle de Asistencias.
+// Se crean con el MISMO formato que las fichadas reales.
+// ============================================================
+
+const DEMO_EMAILS = ['demo.perez@demo.com', 'demo.gomez@demo.com'];
+
+function generarDatosDemo(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+
+  // Idempotencia: si ya hay registros demo, no duplicar
+  const regSheet = getRegistrosSheet();
+  const existentes = regSheet.getDataRange().getValues();
+  for (let i = 1; i < existentes.length; i++) {
+    if (DEMO_EMAILS.indexOf(String(existentes[i][1]).toLowerCase()) !== -1) {
+      return { success: false, error: 'Los datos demo ya existen. Ejecutá "borrarDatosDemo" primero si querés regenerarlos.' };
+    }
+  }
+
+  const emps = [
+    { email: 'demo.perez@demo.com', nombre: 'Carlos', apellido: 'Pérez',
+      sector: 'Perforación', turno: '12h (L-V)', dni: '30111222',
+      empresa: 'Logistica San Juan', aptoVenc: '15/11/2026' },
+    { email: 'demo.gomez@demo.com', nombre: 'María', apellido: 'Gómez',
+      sector: 'Planta', turno: '10h (14x14)', dni: '30222333',
+      empresa: 'Logistica San Juan', aptoVenc: '20/12/2026' }
+  ];
+
+  // Fichadas: [mes, día, horaIngreso, horaEgreso | null (sin cierre)]
+  // Pérez: L-V 12h con ausencias, un sábado corto y un viernes sin cierre.
+  const perez = [
+    [9,  1, '05:58:00', '18:05:00'], [9,  2, '06:12:00', '18:20:00'],
+    [9,  3, '05:55:00', '17:50:00'], [9,  4, '06:05:00', '18:10:00'],
+    // 5-6 finde ausente, 7 lunes ausente
+    [9,  8, '06:02:00', '18:00:00'], [9,  9, '06:18:00', '18:25:00'],
+    [9, 10, '05:52:00', '17:48:00'], [9, 11, '06:08:00', '18:15:00'],
+    [9, 12, '07:00:00', '13:00:00'],  // sábado, media jornada 6h
+    [9, 14, '05:57:00', '18:02:00'], [9, 15, '06:11:00', '18:18:00'],
+    [9, 16, '06:00:00', '18:05:00'], [9, 17, '05:49:00', '17:55:00'],
+    [9, 18, '06:15:00', '18:22:00'],
+    // 21 lunes ausente
+    [9, 22, '06:03:00', '18:08:00'], [9, 23, '05:56:00', '18:00:00'],
+    [9, 24, '06:10:00', '18:16:00'],
+    [9, 25, '06:07:00', null],        // viernes SIN CIERRE
+    [9, 28, '05:59:00', '18:03:00'], [9, 29, '06:13:00', '18:19:00'],
+    [9, 30, '06:01:00', '18:06:00'],
+    [10, 1, '06:04:00', '18:09:00'], [10, 2, '05:58:00', '18:00:00'],
+    [10, 5, '06:00:00', '14:30:00']  // jornada corta 8h30
+  ];
+  // Gómez: ciclo 14x14 (14 días corridos incl. fines de semana, 14 de franco).
+  const gomez = [
+    [9,  1, '06:55:00', '17:05:00'], [9,  2, '07:10:00', '17:20:00'],
+    [9,  3, '06:48:00', '16:58:00'], [9,  4, '07:02:00', '17:12:00'],
+    [9,  5, '06:58:00', '17:03:00'], [9,  6, '07:00:00', '12:05:00'],  // domingo corto 5h
+    [9,  7, '07:15:00', '17:25:00'], [9,  8, '06:52:00', '17:00:00'],
+    [9,  9, '07:05:00', '17:15:00'], [9, 10, '06:59:00', '17:08:00'],
+    [9, 11, '07:12:00', '17:22:00'], [9, 12, '06:50:00', '17:00:00'],
+    [9, 13, '07:03:00', '17:13:00'], [9, 14, '07:08:00', '17:18:00'],
+    // 15-28 franco (14x14)
+    [9, 29, '06:57:00', '17:07:00'], [9, 30, '07:11:00', '17:21:00'],
+    [10, 1, '07:00:00', '17:10:00'], [10, 2, '06:54:00', '17:04:00'],
+    [10, 3, '06:52:00', '17:02:00'], [10, 4, '07:06:00', '17:16:00'],
+    [10, 5, '06:58:00', '17:08:00']
+  ];
+
+  // 1) Crear empleados demo (si no existen), con clave de ingreso para
+  //    poder demostrar el login de la edición General (demo1234)
+  emps.forEach(e => {
+    const existente = findEmpleado(e.email);
+    if (!existente) {
+      getEmpleadosSheet().appendRow([
+        e.email.toLowerCase().trim(),
+        e.nombre, e.apellido, e.sector, e.turno,
+        '', true, false, 'Fuera',
+        e.empresa, e.dni, '', e.aptoVenc, '', '', 'ok', 'habilitado', '',
+        '',
+        _sha256Hex('demo1234')
+      ]);
+    } else if (!String(existente.data[19] || '').trim()) {
+      getEmpleadosSheet().getRange(existente.rowIndex, 20).setValue(_sha256Hex('demo1234'));
+    }
+  });
+
+  // 2) Escribir fichadas en bloque (mismo formato que registrarMovimiento)
+  const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const startRow = regSheet.getLastRow() + 1;
+  const values = [];
+  let n = startRow;
+
+  const escribir = (emp, regs) => {
+    regs.forEach(r => {
+      const fecha = String(r[1]).padStart(2, '0') + '/' + String(r[0]).padStart(2, '0') + '/2026';
+      const diaSemana = dias[new Date(2026, r[0] - 1, r[1]).getDay()];
+      values.push([
+        Utilities.getUuid(), emp.email, emp.nombre, emp.apellido,
+        emp.sector, emp.turno,
+        fecha, r[2], r[3] || '',
+        '=IF(I' + n + '="","",TEXT(MOD(TIMEVALUE(I' + n + ')-TIMEVALUE(H' + n + '),1),"[h]:mm:ss"))',
+        diaSemana
+      ]);
+      n++;
+    });
+  };
+  escribir(emps[0], perez);
+  escribir(emps[1], gomez);
+
+  regSheet.getRange(startRow, 1, values.length, 11).setValues(values);
+  logTraza('Datos demo generados (' + values.length + ' fichadas, 2 empleados)', data.adminEmail, 'verde');
+  return {
+    success: true,
+    message: 'Creados 2 empleados demo con ' + values.length + ' fichadas (sep-oct 2026). ' +
+             'Para probar el ingreso: demo.perez@demo.com / demo1234'
+  };
+}
+
+function borrarDatosDemo(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+
+  // Registros
+  const regSheet = getRegistrosSheet();
+  const rows = regSheet.getDataRange().getValues();
+  let delReg = 0;
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (DEMO_EMAILS.indexOf(String(rows[i][1]).toLowerCase()) !== -1) {
+      regSheet.deleteRow(i + 1);
+      delReg++;
+    }
+  }
+
+  // Empleados
+  const empSheet = getEmpleadosSheet();
+  const erows = empSheet.getDataRange().getValues();
+  let delEmp = 0;
+  for (let i = erows.length - 1; i >= 1; i--) {
+    if (DEMO_EMAILS.indexOf(String(erows[i][0]).toLowerCase()) !== -1) {
+      empSheet.deleteRow(i + 1);
+      delEmp++;
+    }
+  }
+
+  logTraza('Datos demo eliminados (' + delReg + ' fichadas, ' + delEmp + ' empleados)', data.adminEmail, 'amarillo');
+  return { success: true, message: 'Eliminadas ' + delReg + ' fichadas y ' + delEmp + ' empleados demo.' };
+}
+
+// ============================================================
+// NOVEDADES DIARIAS — códigos de la planilla de la empresa
+// P (presente) es automático: lo generan las fichadas.
+// D=Descanso, V=Vacaciones, LC=Licencia, EC=Extra campamento,
+// EB=Extra base, PM=Parte médico, AJ=Ausente justificado,
+// AI=Ausente injustificado
+// ============================================================
+
+const NOVEDADES_CODIGOS = ['D', 'V', 'LC', 'EC', 'EB', 'PM', 'AJ', 'AI'];
+
+function marcarNovedad(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const email = String(data.email || '').toLowerCase().trim();
+  const emp   = findEmpleado(email);
+  if (!emp) return { success: false, error: 'Empleado no encontrado.' };
+  if (NOVEDADES_CODIGOS.indexOf(data.codigo) === -1) {
+    return { success: false, error: 'Código no válido. Usar: ' + NOVEDADES_CODIGOS.join(', ') };
+  }
+
+  const desde = parseFechaSimple(data.fecha);
+  if (!desde || isNaN(desde.getTime())) return { success: false, error: 'Fecha inválida.' };
+  const hasta = data.fechaHasta ? parseFechaSimple(data.fechaHasta) : desde;
+  if (!hasta || isNaN(hasta.getTime()) || hasta < desde) return { success: false, error: 'Rango de fechas inválido.' };
+  if ((hasta - desde) / 86400000 > 62) return { success: false, error: 'El rango máximo es 62 días.' };
+
+  const sh   = getNovedadesSheet();
+  const rows = sh.getDataRange().getValues();
+  const idx  = {};   // 'email|fecha' -> nro de fila (1-based)
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][1]) idx[String(rows[i][1]).toLowerCase() + '|' + fmtFechaCell(rows[i][0])] = i + 1;
+  }
+
+  const ss  = getSpreadsheet();
+  const tz  = ss.getSpreadsheetTimeZone();
+  const ahora = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm');
+  let altas = 0, cambios = 0;
+
+  for (let d = new Date(desde.getTime()); d <= hasta; d.setDate(d.getDate() + 1)) {
+    const fecha = Utilities.formatDate(d, tz, 'dd/MM/yyyy');
+    const fila  = idx[email + '|' + fecha];
+    if (fila) {
+      sh.getRange(fila, 3, 1, 4).setValues([[data.codigo, data.detalle || '', data.adminEmail, ahora]]);
+      cambios++;
+    } else {
+      sh.appendRow([fecha, email, data.codigo, data.detalle || '', data.adminEmail, ahora]);
+      altas++;
+    }
+  }
+
+  const rango = hasta > desde
+    ? Utilities.formatDate(desde, tz, 'dd/MM/yyyy') + ' al ' + Utilities.formatDate(hasta, tz, 'dd/MM/yyyy')
+    : Utilities.formatDate(desde, tz, 'dd/MM/yyyy');
+  logTraza(`Novedad ${data.codigo} (${data.detalle || 'sin detalle'}) — ${emp.data[1]} ${emp.data[2]} · ${rango}`, data.adminEmail, 'amarillo');
+  return { success: true, message: `Novedad ${data.codigo} guardada (${altas} nuevas, ${cambios} actualizadas).` };
+}
+
+function borrarNovedad(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const email = String(data.email || '').toLowerCase().trim();
+  const desde = parseFechaSimple(data.fecha);
+  if (!desde || isNaN(desde.getTime())) return { success: false, error: 'Fecha inválida.' };
+  const hasta = data.fechaHasta ? parseFechaSimple(data.fechaHasta) : desde;
+  if (!hasta || isNaN(hasta.getTime()) || hasta < desde) return { success: false, error: 'Rango de fechas inválido.' };
+
+  const dMin = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  const dMax = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+
+  const sh   = getNovedadesSheet();
+  const rows = sh.getDataRange().getValues();
+  let del = 0;
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][1] || '').toLowerCase() !== email) continue;
+    const f = parseFechaSimple(fmtFechaCell(rows[i][0]));
+    if (f >= dMin && f <= dMax) {
+      sh.deleteRow(i + 1);
+      del++;
+    }
+  }
+  return { success: true, message: del + ' novedad(es) eliminada(s).' };
+}
+
+function obtenerNovedades(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const sh    = getNovedadesSheet();
+  const rows  = sh.getDataRange().getValues();
+  const desde = data.fechaDesde ? parseFechaSimple(data.fechaDesde) : null;
+  const hasta = data.fechaHasta ? parseFechaSimple(data.fechaHasta) : null;
+  const novedades = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    if (!rows[i][1]) continue;
+    const fecha = fmtFechaCell(rows[i][0]);
+    const f     = parseFechaSimple(fecha);
+    if (desde && f < desde) continue;
+    if (hasta && f > hasta) continue;
+    novedades.push({
+      fecha:   fecha,
+      email:   String(rows[i][1]),
+      codigo:  String(rows[i][2] || ''),
+      detalle: rows[i][3] || ''
+    });
+  }
+  return { success: true, novedades };
+}
+
+// ============================================================
 // REPORTES
 // ============================================================
 
 function obtenerReporte(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
 
   const filtros = data.filtros || {};
   const sheet   = getRegistrosSheet();
@@ -513,7 +1224,7 @@ function getConfig() {
 }
 
 function actualizarConfig(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const sheet  = getConfigSheet();
   const rows   = sheet.getDataRange().getValues();
   const config = data.config || {};
@@ -722,11 +1433,14 @@ function getReemplazosSheet() {
 function getTrazabilidadSheet() {
   return ensureSheet('Trazabilidad', ['Fecha', 'Hora', 'Usuario', 'Accion', 'Color']);
 }
+function getNovedadesSheet() {
+  return ensureSheet('Novedades', ['Fecha', 'Email', 'Codigo', 'Detalle', 'Registrado_Por', 'Registrado_El']);
+}
 
 // --- Extensión de la hoja Empleados con columnas J..R ---
 function migrarEmpleadosColumnas() {
   const sh = getEmpleadosSheet();
-  const nuevos = ['Empresa', 'DNI', 'Telefono', 'Apto_Venc', 'Licencia_Tipo', 'Licencia_Venc', 'ART_Estado', 'Habilitacion', 'Obs_Gestion'];
+  const nuevos = ['Empresa', 'DNI', 'Telefono', 'Apto_Venc', 'Licencia_Tipo', 'Licencia_Venc', 'ART_Estado', 'Habilitacion', 'Obs_Gestion', 'Convenio'];
   if (sh.getLastColumn() < 9 + nuevos.length) {
     for (let i = 0; i < nuevos.length; i++) {
       if (!sh.getRange(1, 10 + i).getValue()) sh.getRange(1, 10 + i).setValue(nuevos[i]);
@@ -777,7 +1491,7 @@ function estadoDoc(venc, diasWarning) {
 // ============================================================
 
 function obtenerOperacion(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   migrarEmpleadosColumnas();
 
   // ---- Empleados con habilitación ----
@@ -877,7 +1591,7 @@ function obtenerOperacion(data) {
 // ============================================================
 
 function obtenerTrazabilidad(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const rows = getTrazabilidadSheet().getDataRange().getValues();
   const traza = [];
   for (let i = rows.length - 1; i >= 1 && traza.length < 100; i--) {
@@ -892,7 +1606,7 @@ function obtenerTrazabilidad(data) {
 // ============================================================
 
 function agregarVehiculo(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const v = data.vehiculo || {};
   if (!v.patente) return { success: false, error: 'La patente es obligatoria.' };
   const rows = getVehiculosSheet().getDataRange().getValues();
@@ -912,7 +1626,7 @@ function agregarVehiculo(data) {
 }
 
 function actualizarVehiculo(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const colMap = { patente: 2, tipo: 3, empresa: 4, estado: 5, seguroVenc: 6, vtvVenc: 7, obs: 8 };
   const col = colMap[data.campo];
   if (!col) return { success: false, error: 'Campo no válido.' };
@@ -938,7 +1652,7 @@ function actualizarVehiculo(data) {
 // ============================================================
 
 function agregarEmpresa(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const c = data.empresa || {};
   if (!c.nombre) return { success: false, error: 'La razón social es obligatoria.' };
   const rows = getEmpresasSheet().getDataRange().getValues();
@@ -958,7 +1672,7 @@ function agregarEmpresa(data) {
 }
 
 function actualizarEmpresa(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const colMap = { nombre: 2, tipo: 3, cuit: 4, artVenc: 5, seguroVenc: 6, contrato: 7 };
   const col = colMap[data.campo];
   if (!col) return { success: false, error: 'Campo no válido.' };
@@ -978,7 +1692,7 @@ function actualizarEmpresa(data) {
 // ============================================================
 
 function agregarObservacion(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const o = data.observacion || {};
   if (!o.entidad || !o.descripcion) return { success: false, error: 'Entidad y descripción son obligatorias.' };
 
@@ -1002,7 +1716,7 @@ function agregarObservacion(data) {
 }
 
 function resolverObservacion(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const rows = getObservacionesSheet().getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] === data.id) {
@@ -1016,7 +1730,7 @@ function resolverObservacion(data) {
 }
 
 function marcarAlertasLeidas(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const sheet = getAlertasSheet();
   const rows  = sheet.getDataRange().getValues();
   let n = 0;
@@ -1035,7 +1749,7 @@ function marcarAlertasLeidas(data) {
 // ============================================================
 
 function registrarAusencia(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const r = data.reemplazo || {};
   if (!r.ausente) return { success: false, error: 'Indique el empleado ausente.' };
 
@@ -1051,7 +1765,7 @@ function registrarAusencia(data) {
 }
 
 function asignarReemplazo(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const rows = getReemplazosSheet().getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] === data.id) {
@@ -1082,7 +1796,7 @@ function asignarReemplazo(data) {
 }
 
 function descartarReemplazo(data) {
-  if (!esAdminFn(data.adminEmail)) return { success: false, error: 'Sin permisos.' };
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
   const rows = getReemplazosSheet().getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (rows[i][0] === data.id) {

@@ -13,9 +13,60 @@
 // ============================================================
 
 function getSpreadsheet() {
-  const sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
-  if (!sheetId) throw new Error('SHEET_ID no configurado en las propiedades del script.');
+  let sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+  if (!sheetId) {
+    // Primera vez que se usa el script: crear la planilla automáticamente
+    // (no requiere configurar propiedades a mano).
+    sheetId = _bootstrapBD();
+  }
   return SpreadsheetApp.openById(sheetId);
+}
+
+// ---- Auto-instalación de la base de datos ----
+// Si SHEET_ID no está configurado, se crea la planilla en el Drive del
+// dueño del script, con todas las hojas y el administrador raíz sembrado.
+// Ocurre una sola vez (después queda guardado el ID en propiedades).
+function _bootstrapBD() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    // Doble chequeo bajo lock: otra request pudo crearla en paralelo
+    let sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
+    if (sheetId) return sheetId;
+
+    const ss = SpreadsheetApp.create('Control Personal — Base de Datos');
+    sheetId = ss.getId();
+    PropertiesService.getScriptProperties().setProperty('SHEET_ID', sheetId);
+
+    // Inicializar hojas + sembrar el admin raíz
+    inicializarHojas();
+    _seedRootAdmin();
+    return sheetId;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Sembrar el administrador raíz (BOOTSTRAP_ADMIN_EMAIL + hash canónico)
+function _seedRootAdmin() {
+  if (!BOOTSTRAP_ADMIN_EMAIL || !BOOTSTRAP_ADMIN_HASH) return;
+  const sh = getEmpleadosSheet();
+  if (!sh.getRange(1, 20).getValue()) sh.getRange(1, 20).setValue('Admin_Pass_Hash');
+
+  // Quitar la fila de ejemplo que crea inicializarHojas
+  const rows = sh.getDataRange().getValues();
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).toLowerCase() === 'admin@tuempresa.com') sh.deleteRow(i + 1);
+  }
+
+  if (!findEmpleado(BOOTSTRAP_ADMIN_EMAIL)) {
+    sh.appendRow([
+      BOOTSTRAP_ADMIN_EMAIL, 'Admin', 'Principal', 'Dirección', '',
+      '', true, true, 'Fuera',
+      '', '', '', '', '', '', 'ok', 'habilitado', '', '',
+      BOOTSTRAP_ADMIN_HASH
+    ]);
+  }
 }
 
 function doPost(e) {
@@ -48,8 +99,10 @@ function doGet(e) {
 function handleAction(data) {
   switch (data.action) {
     case 'loginAdmin':           return loginAdmin(data);
+    case 'loginGeneral':         return loginGeneral(data);
     case 'validarToken':         return validarToken(data);
     case 'logoutAdmin':          return logoutAdmin(data);
+    case 'obtenerBD':            return obtenerBD(data);
     case 'setearAdmin':          return setearAdmin(data);
     case 'quitarAdmin':          return quitarAdmin(data);
     case 'cambiarClaveAdmin':    return cambiarClaveAdmin(data);
@@ -263,6 +316,56 @@ function loginAdmin(data) {
   getSesionesSheet().appendRow([token, email, new Date(), expira]);
   logTraza('Login admin: ' + email, email, 'azul');
   return { success: true, token, email, expira: expira.toISOString() };
+}
+
+// ---- LOGIN GENERAL (email + contraseña, sin Google) ----
+// Usado por la edición General (colegios, comercios, empresas). Identifica
+// a administradores (devuelve token de sesión) y a empleados (devuelve sus
+// datos para la pantalla de fichada, con vinculación de dispositivo).
+function loginGeneral(data) {
+  const email = String(data.email || '').toLowerCase().trim();
+  const pass  = String(data.password || '');
+  if (!_rateLimitOK('loginGeneral', email)) {
+    return { success: false, error: 'Demasiados intentos. Aguarde un minuto.' };
+  }
+  if (!email || !pass) return { success: false, error: 'Email y contraseña requeridos.' };
+
+  const emp = findEmpleado(email);
+  if (!emp) return { success: false, error: 'Email o contraseña incorrectos.' };
+
+  const esAdminRow = emp.data[7] === true || String(emp.data[7]).toUpperCase() === 'TRUE';
+  const esRoot = email === BOOTSTRAP_ADMIN_EMAIL && !!BOOTSTRAP_ADMIN_HASH;
+
+  // ---- Administrador: delegar en loginAdmin (auto-repara raíz y crea token) ----
+  if (esAdminRow || esRoot) {
+    const r = loginAdmin(data);
+    if (!r.success) return r;
+    return { success: true, tipo: 'admin', token: r.token, expira: r.expira, nombre: emp.data[1] };
+  }
+
+  if (!data.fingerprintId || !String(data.fingerprintId).trim().startsWith('fp_')) {
+    return { success: false, error: 'Dispositivo no identificado. Use la app oficial desde su celular vinculado.' };
+  }
+
+  // ---- Empleado: validar contraseña (col Admin_Pass_Hash) ----
+  const hashGuardado = String(emp.data[19] || '').trim().toLowerCase();
+  if (!hashGuardado || _sha256Hex(pass) !== hashGuardado) {
+    return { success: false, error: 'Email o contraseña incorrectos.' };
+  }
+  const activo = emp.data[6] === true || String(emp.data[6]).toUpperCase() === 'TRUE';
+  if (!activo) return { success: false, error: 'Empleado inactivo. Contacte al administrador.' };
+
+  // ---- Dispositivo + geocerca: mismos controles que el flujo con Google ----
+  const verif = verificarEmpleado(data);
+  if (!verif.success) return verif;
+  return { success: true, tipo: 'empleado', empleado: verif.empleado };
+}
+
+// ---- URL de la planilla (para el admin; útil para ubicar la BD) ----
+function obtenerBD(data) {
+  if (!esAdminFn(data)) return { success: false, error: 'Sin permisos.' };
+  const ss = getSpreadsheet();
+  return { success: true, url: ss.getUrl(), nombre: ss.getName() };
 }
 
 // ---- VALIDAR TOKEN (para el frontend al cargar) ----
@@ -709,10 +812,14 @@ function agregarEmpleado(data) {
   if (!e || !e.email || !e.nombre || !e.apellido) return { success: false, error: 'Datos incompletos.' };
   if (findEmpleado(e.email)) return { success: false, error: 'Ya existe un empleado con ese email.' };
 
-  // Si se marca como administrador, la contraseña es obligatoria (mín. 8)
+  // Si se marca como administrador, la contraseña es obligatoria (mín. 8).
+  // Para empleados es opcional (se usa para ingresar en la edición General).
   const seraAdmin = e.esAdmin === true || e.esAdmin === 'true';
   if (seraAdmin && !_claveValida(e.adminPassword)) {
     return { success: false, error: 'Para crear un administrador, ingrese una contraseña de al menos 8 caracteres.' };
+  }
+  if (!seraAdmin && e.adminPassword && !_claveValida(e.adminPassword)) {
+    return { success: false, error: 'La clave de ingreso debe tener al menos 8 caracteres.' };
   }
 
   _asegurarColHash();
@@ -728,8 +835,8 @@ function agregarEmpleado(data) {
     e.aptoVenc || '', e.licenciaTipo || '', e.licenciaVenc || '',
     'ok', 'habilitado', '',
     e.convenio || '',
-    // ---- Contraseña de administrador (hash; vacío si no es admin) ----
-    seraAdmin ? _sha256Hex(e.adminPassword) : ''
+    // ---- Clave de ingreso (hash; obligatoria si es admin) ----
+    e.adminPassword ? _sha256Hex(e.adminPassword) : ''
   ]);
   logTraza(`Empleado agregado — ${e.nombre} ${e.apellido} (${e.sector || 'sin sector'})`, _verificarToken(data.token) || data.adminEmail, 'verde');
   return { success: true, message: seraAdmin ? 'Empleado agregado y designado administrador.' : 'Empleado agregado correctamente.' };
@@ -841,15 +948,22 @@ function generarDatosDemo(data) {
     [10, 5, '06:58:00', '17:08:00']
   ];
 
-  // 1) Crear empleados demo (si no existen)
+  // 1) Crear empleados demo (si no existen), con clave de ingreso para
+  //    poder demostrar el login de la edición General (demo1234)
   emps.forEach(e => {
-    if (findEmpleado(e.email)) return;
-    getEmpleadosSheet().appendRow([
-      e.email.toLowerCase().trim(),
-      e.nombre, e.apellido, e.sector, e.turno,
-      '', true, false, 'Fuera',
-      e.empresa, e.dni, '', e.aptoVenc, '', '', 'ok', 'habilitado', ''
-    ]);
+    const existente = findEmpleado(e.email);
+    if (!existente) {
+      getEmpleadosSheet().appendRow([
+        e.email.toLowerCase().trim(),
+        e.nombre, e.apellido, e.sector, e.turno,
+        '', true, false, 'Fuera',
+        e.empresa, e.dni, '', e.aptoVenc, '', '', 'ok', 'habilitado', '',
+        '',
+        _sha256Hex('demo1234')
+      ]);
+    } else if (!String(existente.data[19] || '').trim()) {
+      getEmpleadosSheet().getRange(existente.rowIndex, 20).setValue(_sha256Hex('demo1234'));
+    }
   });
 
   // 2) Escribir fichadas en bloque (mismo formato que registrarMovimiento)
@@ -877,7 +991,11 @@ function generarDatosDemo(data) {
 
   regSheet.getRange(startRow, 1, values.length, 11).setValues(values);
   logTraza('Datos demo generados (' + values.length + ' fichadas, 2 empleados)', data.adminEmail, 'verde');
-  return { success: true, message: 'Creados 2 empleados demo con ' + values.length + ' fichadas (sep-oct 2026).' };
+  return {
+    success: true,
+    message: 'Creados 2 empleados demo con ' + values.length + ' fichadas (sep-oct 2026). ' +
+             'Para probar el ingreso: demo.perez@demo.com / demo1234'
+  };
 }
 
 function borrarDatosDemo(data) {
